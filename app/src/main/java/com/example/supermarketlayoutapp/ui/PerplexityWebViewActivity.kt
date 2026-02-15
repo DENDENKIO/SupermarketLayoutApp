@@ -479,12 +479,18 @@ JANコードリスト: $janListStr
      */
     private fun parseAndReturnData(aiResponse: String) {
         Log.d(TAG, "========== parseAndReturnData 開始 ==========")
+        Log.d(TAG, "AI応答テキスト長: ${aiResponse.length}")
+        Log.d(TAG, "AI応答の最初500文字:")
+        Log.d(TAG, aiResponse.take(500))
+        Log.d(TAG, "AI応答の最後500文字:")
+        Log.d(TAG, aiResponse.takeLast(500))
         
         try {
             val jsonString = extractJsonFromAiText(aiResponse)
             if (jsonString != null) {
-                Log.d(TAG, "抽出されたJSON:")
-                Log.d(TAG, jsonString)
+                Log.d(TAG, "抽出されたJSON長: ${jsonString.length}")
+                Log.d(TAG, "抽出されたJSONの最初300文字:")
+                Log.d(TAG, jsonString.take(300))
                 
                 try {
                     // JSON配列としてパース
@@ -500,7 +506,7 @@ JANコードリスト: $janListStr
                     runOnUiThread {
                         Toast.makeText(
                             this,
-                            "JSONパースエラー: ${e.message}",
+                            "JSONパースエラー: ${e.message}\n\nJSONの最初100文字: ${jsonString.take(100)}",
                             Toast.LENGTH_LONG
                         ).show()
                         // エラーでも終了
@@ -512,7 +518,7 @@ JANコードリスト: $janListStr
                 runOnUiThread {
                     Toast.makeText(
                         this,
-                        "JSONデータが見つかりませんでした。",
+                        "JSONデータが見つかりませんでした。\n\nAIテキストの最初100文字: ${aiResponse.take(100)}",
                         Toast.LENGTH_LONG
                     ).show()
                     // エラーでも終了
@@ -536,18 +542,41 @@ JANコードリスト: $janListStr
     }
 
     private fun extractJsonFromAiText(text: String): String? {
+        Log.d(TAG, "========== extractJsonFromAiText 開始 ==========")
+        
         val startMarker = "<DATA_START>"
         val endMarker = "<DATA_END>"
         
-        val lastStart = text.lastIndexOf(startMarker)
-        if (lastStart == -1) {
+        // マーカーの存在を検索
+        val hasStart = text.contains(startMarker)
+        val hasEnd = text.contains(endMarker)
+        
+        Log.d(TAG, "<DATA_START>検出: $hasStart")
+        Log.d(TAG, "<DATA_END>検出: $hasEnd")
+        
+        if (!hasStart) {
             Log.w(TAG, "<DATA_START>マーカーが見つかりません")
+            // 部分一致を検索
+            if (text.contains("DATA_START")) {
+                Log.w(TAG, "DATA_STARTはあるが<>がない")
+            }
+            return null
+        }
+        
+        val lastStart = text.lastIndexOf(startMarker)
+        
+        if (!hasEnd) {
+            Log.w(TAG, "<DATA_END>マーカーが見つかりません")
+            // 部分一致を検索
+            if (text.contains("DATA_END")) {
+                Log.w(TAG, "DATA_ENDはあるが<>がない")
+            }
             return null
         }
         
         val lastEnd = text.indexOf(endMarker, lastStart)
         if (lastEnd == -1) {
-            Log.w(TAG, "<DATA_END>マーカーが見つかりません")
+            Log.w(TAG, "<DATA_END>マーカーが<DATA_START>の後に見つかりません")
             return null
         }
         
@@ -556,6 +585,12 @@ JANコードリスト: $janListStr
         val extracted = text.substring(lastStart + startMarker.length, lastEnd).trim()
         Log.d(TAG, "抽出されたテキスト長: ${extracted.length}")
         
+        if (extracted.isEmpty()) {
+            Log.w(TAG, "マーカー間が空です")
+            return null
+        }
+        
+        Log.d(TAG, "========== extractJsonFromAiText 終了 ==========")
         return extracted
     }
 
