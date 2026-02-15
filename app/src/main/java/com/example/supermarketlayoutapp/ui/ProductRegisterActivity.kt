@@ -5,7 +5,7 @@ import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.example.supermarketlayoutapp.R
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.supermarketlayoutapp.data.AppDatabase
 import com.example.supermarketlayoutapp.data.AppRepository
 import com.example.supermarketlayoutapp.data.entity.ProductEntity
@@ -17,7 +17,10 @@ class ProductRegisterActivity : AppCompatActivity() {
     
     private lateinit var binding: ActivityProductRegisterBinding
     private lateinit var repository: AppRepository
-    private var currentProduct: ProductEntity? = null
+    private val productResults = mutableListOf<ProductEntity>()
+    private lateinit var adapter: ProductResultAdapter
+    private var currentJanList = listOf<String>()
+    private var currentJanIndex = 0
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -27,52 +30,74 @@ class ProductRegisterActivity : AppCompatActivity() {
         val database = AppDatabase.getDatabase(this)
         repository = AppRepository(database)
         
+        setupRecyclerView()
         setupListeners()
+    }
+    
+    private fun setupRecyclerView() {
+        adapter = ProductResultAdapter(productResults) { product ->
+            saveProduct(product)
+        }
+        binding.resultRecyclerView.layoutManager = LinearLayoutManager(this)
+        binding.resultRecyclerView.adapter = adapter
     }
     
     private fun setupListeners() {
         binding.searchButton.setOnClickListener {
-            val jan = binding.janEditText.text.toString()
-            if (jan.length < 8) {
-                Snackbar.make(binding.root, "JANコードは8桁以上入力してください", Snackbar.LENGTH_SHORT).show()
+            val janInput = binding.janEditText.text.toString().trim()
+            if (janInput.isEmpty()) {
+                Snackbar.make(binding.root, "JANコードを入力してください", Snackbar.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            searchProduct(jan)
-        }
-        
-        binding.saveButton.setOnClickListener {
-            saveProduct()
+            
+            currentJanList = janInput.split(",").map { it.trim() }.filter { it.length >= 8 }
+            
+            if (currentJanList.isEmpty()) {
+                Snackbar.make(binding.root, "8桁以上のJANコードを入力してください", Snackbar.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            
+            productResults.clear()
+            adapter.notifyDataSetChanged()
+            currentJanIndex = 0
+            processNextJan()
         }
     }
     
-    private fun searchProduct(jan: String) {
+    private fun processNextJan() {
+        if (currentJanIndex >= currentJanList.size) {
+            showLoading(false)
+            binding.statusText.text = "全${currentJanList.size}件の検索完了"
+            binding.resultRecyclerView.visibility = View.VISIBLE
+            return
+        }
+        
+        val jan = currentJanList[currentJanIndex]
         showLoading(true)
-        binding.statusText.text = "ローカルDBを検索中..."
+        binding.statusText.text = "${currentJanIndex + 1}/${currentJanList.size}: $jan を検索中..."
         
         lifecycleScope.launch {
             try {
-                // ローカルDB検索
                 val existingProduct = repository.getProductByJan(jan)
                 
                 if (existingProduct != null) {
-                    // 既存商品が見つかった
-                    showLoading(false)
-                    binding.statusText.text = "商品が見つかりました"
-                    displayProduct(existingProduct)
+                    productResults.add(existingProduct)
+                    adapter.notifyItemInserted(productResults.size - 1)
+                    binding.resultRecyclerView.visibility = View.VISIBLE
+                    currentJanIndex++
+                    processNextJan()
                 } else {
-                    // 見つからない場合はPerplexity.aiで検索
-                    binding.statusText.text = "AI検索を開始します..."
                     searchWithPerplexity(jan)
                 }
             } catch (e: Exception) {
-                showLoading(false)
-                binding.statusText.text = "エラーが発生しました: ${e.message}"
+                binding.statusText.text = "エラー: ${e.message}"
+                currentJanIndex++
+                processNextJan()
             }
         }
     }
     
     private fun searchWithPerplexity(jan: String) {
-        // PerplexityWebViewActivityを起動
         val intent = Intent(this, PerplexityWebViewActivity::class.java)
         intent.putExtra("JAN_CODE", jan)
         startActivityForResult(intent, REQUEST_CODE_PERPLEXITY)
@@ -81,74 +106,38 @@ class ProductRegisterActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         
-        if (requestCode == REQUEST_CODE_PERPLEXITY && resultCode == RESULT_OK) {
-            data?.let {
+        if (requestCode == REQUEST_CODE_PERPLEXITY) {
+            if (resultCode == RESULT_OK && data != null) {
                 val product = ProductEntity(
-                    jan = it.getStringExtra("jan") ?: "",
-                    maker = it.getStringExtra("maker"),
-                    name = it.getStringExtra("name") ?: "不明",
-                    category = it.getStringExtra("category"),
-                    minPrice = it.getIntExtra("min_price", 0).takeIf { it > 0 },
-                    maxPrice = it.getIntExtra("max_price", 0).takeIf { it > 0 },
-                    widthMm = it.getIntExtra("width_mm", 0).takeIf { it > 0 },
-                    heightMm = it.getIntExtra("height_mm", 0).takeIf { it > 0 },
-                    depthMm = it.getIntExtra("depth_mm", 0).takeIf { it > 0 },
+                    jan = data.getStringExtra("jan") ?: "",
+                    maker = data.getStringExtra("maker"),
+                    name = data.getStringExtra("name") ?: "不明",
+                    category = data.getStringExtra("category"),
+                    minPrice = data.getIntExtra("min_price", 0).takeIf { it > 0 },
+                    maxPrice = data.getIntExtra("max_price", 0).takeIf { it > 0 },
+                    widthMm = data.getIntExtra("width_mm", 0).takeIf { it > 0 },
+                    heightMm = data.getIntExtra("height_mm", 0).takeIf { it > 0 },
+                    depthMm = data.getIntExtra("depth_mm", 0).takeIf { it > 0 },
                     priceUpdatedAt = System.currentTimeMillis()
                 )
                 
-                showLoading(false)
-                binding.statusText.text = "AI検索完了"
-                displayProduct(product)
+                productResults.add(product)
+                adapter.notifyItemInserted(productResults.size - 1)
+                binding.resultRecyclerView.visibility = View.VISIBLE
             }
-        } else {
-            showLoading(false)
-            binding.statusText.text = "検索がキャンセルされました"
+            
+            currentJanIndex++
+            processNextJan()
         }
     }
     
-    private fun displayProduct(product: ProductEntity) {
-        currentProduct = product
-        binding.resultCard.visibility = View.VISIBLE
-        
-        binding.productNameText.text = product.name
-        binding.productMakerText.text = "メーカー: ${product.maker ?: "不明"}"
-        binding.productCategoryText.text = "カテゴリ: ${product.category ?: "不明"}"
-        
-        val priceText = if (product.minPrice != null && product.maxPrice != null) {
-            "価格: ¥${product.minPrice} - ¥${product.maxPrice}"
-        } else {
-            "価格: 不明"
-        }
-        binding.productPriceText.text = priceText
-        
-        val sizeText = if (product.widthMm != null && product.heightMm != null && product.depthMm != null) {
-            "サイズ: ${product.widthMm}mm × ${product.heightMm}mm × ${product.depthMm}mm"
-        } else {
-            "サイズ: 不明"
-        }
-        binding.productSizeText.text = sizeText
-    }
-    
-    private fun saveProduct() {
-        val product = currentProduct ?: return
-        
-        showLoading(true)
-        binding.statusText.text = "保存中..."
-        
+    private fun saveProduct(product: ProductEntity) {
         lifecycleScope.launch {
             try {
                 repository.insertProduct(product)
-                showLoading(false)
-                binding.statusText.text = "保存完了"
-                Snackbar.make(binding.root, "商品を保存しました", Snackbar.LENGTH_LONG).show()
-                
-                // 入力欄をクリア
-                binding.janEditText.text?.clear()
-                binding.resultCard.visibility = View.GONE
-                currentProduct = null
+                Snackbar.make(binding.root, "${product.name} を保存しました", Snackbar.LENGTH_SHORT).show()
             } catch (e: Exception) {
-                showLoading(false)
-                binding.statusText.text = "保存失敗: ${e.message}"
+                Snackbar.make(binding.root, "保存失敗: ${e.message}", Snackbar.LENGTH_LONG).show()
             }
         }
     }
