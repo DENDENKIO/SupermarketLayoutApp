@@ -24,8 +24,8 @@ import java.io.InputStreamReader
  * 機能:
  * - 複数JANコードのカンマ区切り/改行区切り入力
  * - テキストファイルからの一括読み込み
- * - Perplexity.aiを使用した自動商品情報取得
- * - シーケンシャルな検索処理（1件ずつ順に実行）
+ * - **複数JANコードを一括でPerplexity.aiに送信**
+ * - **1回の通信で複数商品情報を取得** (高速化)
  */
 class ProductRegisterActivity : AppCompatActivity() {
     
@@ -33,12 +33,11 @@ class ProductRegisterActivity : AppCompatActivity() {
     private lateinit var repository: AppRepository
     private val productResults = mutableListOf<ProductEntity>()
     private lateinit var adapter: ProductResultAdapter
-    private var currentJanList = listOf<String>()
-    private var currentJanIndex = 0
     
     companion object {
         private const val TAG = "ProductRegisterActivity"
         private const val REQUEST_CODE_PERPLEXITY = 1001
+        private const val MAX_BATCH_SIZE = 10 // 一度に送信する最大JAN数
     }
     
     /**
@@ -169,12 +168,12 @@ class ProductRegisterActivity : AppCompatActivity() {
      */
     private fun startSearch(janInput: String) {
         // カンマ区切りと改行区切り両方に対応
-        currentJanList = janInput
+        val janList = janInput
             .split("\n", ",")
             .map { it.trim() }
             .filter { it.length >= 8 && it.all { c -> c.isDigit() } }
         
-        if (currentJanList.isEmpty()) {
+        if (janList.isEmpty()) {
             Snackbar.make(
                 binding.root, 
                 "8桁以上の有効なJANコードを入力してください", 
@@ -183,71 +182,91 @@ class ProductRegisterActivity : AppCompatActivity() {
             return
         }
         
-        Log.d(TAG, "検索開始: ${currentJanList.size}件のJANコード")
-        Log.d(TAG, "JANリスト: $currentJanList")
+        Log.d(TAG, "★★★ 検索開始: ${janList.size}件のJANコード ★★★")
+        Log.d(TAG, "JANリスト: $janList")
         
         productResults.clear()
         adapter.notifyDataSetChanged()
-        currentJanIndex = 0
-        processNextJan()
+        
+        processBatch(janList)
     }
     
     /**
-     * 次のJANコードを処理
+     * 複数JANコードをバッチ処理
      */
-    private fun processNextJan() {
-        if (currentJanIndex >= currentJanList.size) {
-            showLoading(false)
-            binding.statusText.text = "全${currentJanList.size}件の検索完了"
-            binding.resultRecyclerView.visibility = View.VISIBLE
-            Log.d(TAG, "★★★ 全検索完了 ★★★")
-            return
-        }
-        
-        val jan = currentJanList[currentJanIndex]
+    private fun processBatch(janList: List<String>) {
         showLoading(true)
-        binding.statusText.text = "${currentJanIndex + 1}/${currentJanList.size}: $jan を検索中..."
-        
-        Log.d(TAG, "========================================")
-        Log.d(TAG, "処理中: [${currentJanIndex + 1}/${currentJanList.size}] JAN=$jan")
-        Log.d(TAG, "========================================")
+        binding.statusText.text = "${janList.size}件のJANコードを処理中..."
         
         lifecycleScope.launch {
             try {
-                val existingProduct = repository.getProductByJan(jan)
+                val existingProducts = mutableListOf<ProductEntity>()
+                val missingJans = mutableListOf<String>()
                 
-                if (existingProduct != null) {
-                    Log.d(TAG, "☆ 既存商品をデータベースから取得: ${existingProduct.name}")
-                    productResults.add(existingProduct)
-                    adapter.notifyItemInserted(productResults.size - 1)
-                    binding.resultRecyclerView.visibility = View.VISIBLE
-                    currentJanIndex++
-                    processNextJan()
-                } else {
-                    Log.d(TAG, "→ Perplexity.aiで検索します...")
-                    searchWithPerplexity(jan)
+                // 既存商品と未登録JANを仕分け
+                for (jan in janList) {
+                    val existing = repository.getProductByJan(jan)
+                    if (existing != null) {
+                        existingProducts.add(existing)
+                        Log.d(TAG, "☆ 既存商品: JAN=$jan, 名称=${existing.name}")
+                    } else {
+                        missingJans.add(jan)
+                        Log.d(TAG, "→ 未登録: JAN=$jan")
+                    }
                 }
+                
+                // 既存商品を結果に追加
+                productResults.addAll(existingProducts)
+                adapter.notifyDataSetChanged()
+                binding.resultRecyclerView.visibility = View.VISIBLE
+                
+                Log.d(TAG, "========================================")
+                Log.d(TAG, "既存商品: ${existingProducts.size}件")
+                Log.d(TAG, "未登録JAN: ${missingJans.size}件")
+                Log.d(TAG, "========================================")
+                
+                if (missingJans.isEmpty()) {
+                    showLoading(false)
+                    binding.statusText.text = "全${janList.size}件の検索完了（すべてデータベースから取得）"
+                    Log.d(TAG, "★★★ 全件既存商品でした。検索完了 ★★★")
+                    return@launch
+                }
+                
+                // 未登録JANをバッチごとにPerplexity.aiで検索
+                val batches = missingJans.chunked(MAX_BATCH_SIZE)
+                Log.d(TAG, "未登録JANを${batches.size}バッチに分割して検索します")
+                
+                // 最初のバッチを送信
+                searchWithPerplexity(batches[0], batchIndex = 1, totalBatches = batches.size)
+                
             } catch (e: Exception) {
-                Log.e(TAG, "検索エラー: JAN=$jan", e)
+                Log.e(TAG, "バッチ処理エラー", e)
                 binding.statusText.text = "エラー: ${e.message}"
-                currentJanIndex++
-                processNextJan()
+                showLoading(false)
             }
         }
     }
     
     /**
-     * Perplexity.aiで検索
+     * Perplexity.aiで複数JANコードを一括検索
      */
-    private fun searchWithPerplexity(jan: String) {
-        Log.d(TAG, "★★★ Perplexity.ai起動: JAN=$jan ★★★")
+    private fun searchWithPerplexity(
+        janList: List<String>,
+        batchIndex: Int,
+        totalBatches: Int
+    ) {
+        Log.d(TAG, "★★★ Perplexity.ai起動: バッチ$batchIndex/$totalBatches (${janList.size}件) ★★★")
+        Log.d(TAG, "JANリスト: $janList")
+        
+        binding.statusText.text = "Perplexity.aiで検索中... (バッチ$batchIndex/$totalBatches)"
+        
         val intent = Intent(this, PerplexityWebViewActivity::class.java)
-        intent.putExtra("JAN_CODE", jan)
+        intent.putExtra("JAN_CODE_LIST", janList.toTypedArray())
         startActivityForResult(intent, REQUEST_CODE_PERPLEXITY)
     }
     
     /**
-     * Perplexity.aiからの結果を受け取る
+     * Perplexity.aiからの複数結果を受け取る
      */
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -259,31 +278,41 @@ class ProductRegisterActivity : AppCompatActivity() {
             if (resultCode == RESULT_OK && data != null) {
                 Log.d(TAG, "★ Perplexity.aiから成功結果を受信 ★")
                 
-                val product = ProductEntity(
-                    jan = data.getStringExtra("jan") ?: "",
-                    maker = data.getStringExtra("maker"),
-                    name = data.getStringExtra("name") ?: "不明",
-                    category = data.getStringExtra("category"),
-                    minPrice = data.getIntExtra("min_price", 0).takeIf { it > 0 },
-                    maxPrice = data.getIntExtra("max_price", 0).takeIf { it > 0 },
-                    widthMm = data.getIntExtra("width_mm", 0).takeIf { it > 0 },
-                    heightMm = data.getIntExtra("height_mm", 0).takeIf { it > 0 },
-                    depthMm = data.getIntExtra("depth_mm", 0).takeIf { it > 0 },
-                    priceUpdatedAt = System.currentTimeMillis()
-                )
+                val productCount = data.getIntExtra("product_count", 0)
+                Log.d(TAG, "受信した商品数: $productCount")
                 
-                Log.d(TAG, "取得した商品: $product")
+                // 複数商品をループで解析
+                for (i in 0 until productCount) {
+                    val prefix = "product_$i"
+                    val product = ProductEntity(
+                        jan = data.getStringExtra("${prefix}_jan") ?: "",
+                        maker = data.getStringExtra("${prefix}_maker"),
+                        name = data.getStringExtra("${prefix}_name") ?: "不明",
+                        category = data.getStringExtra("${prefix}_category"),
+                        minPrice = data.getIntExtra("${prefix}_min_price", 0).takeIf { it > 0 },
+                        maxPrice = data.getIntExtra("${prefix}_max_price", 0).takeIf { it > 0 },
+                        widthMm = data.getIntExtra("${prefix}_width_mm", 0).takeIf { it > 0 },
+                        heightMm = data.getIntExtra("${prefix}_height_mm", 0).takeIf { it > 0 },
+                        depthMm = data.getIntExtra("${prefix}_depth_mm", 0).takeIf { it > 0 },
+                        priceUpdatedAt = System.currentTimeMillis()
+                    )
+                    
+                    Log.d(TAG, "[$i] 取得した商品: JAN=${product.jan}, 名称=${product.name}")
+                    
+                    productResults.add(product)
+                }
                 
-                productResults.add(product)
-                adapter.notifyItemInserted(productResults.size - 1)
+                adapter.notifyDataSetChanged()
                 binding.resultRecyclerView.visibility = View.VISIBLE
+                
             } else {
                 Log.w(TAG, "⚠ Perplexity.aiからの結果が無いまたはキャンセルされました")
             }
             
-            // 次のJANコードへ
-            currentJanIndex++
-            processNextJan()
+            // 検索完了
+            showLoading(false)
+            binding.statusText.text = "全${productResults.size}件の検索完了"
+            Log.d(TAG, "★★★ 全検索完了 ★★★")
         }
     }
     
