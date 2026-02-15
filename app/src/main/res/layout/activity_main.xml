@@ -41,10 +41,10 @@
         android:layout_marginTop="16dp" />
 
     <Button
-        android:id="@+id/btnLayoutEditor"
+        android:id="@+id/btnPlanogramManager"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="売場レイアウト編集"
+        android:text="棚割り管理"
         app:layout_constraintTop_toBottomOf="@id/btnProductJsonManager"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
