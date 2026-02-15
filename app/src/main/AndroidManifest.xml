@@ -34,6 +34,11 @@
             android:name=".ui.PerplexityWebViewActivity"
             android:label="AI検索"
             android:theme="@style/Theme.SupermarketLayoutApp" />
+        
+        <activity
+            android:name=".ui.LayoutEditorActivity"
+            android:label="売場レイアウト編集"
+            android:theme="@style/Theme.SupermarketLayoutApp" />
     </application>
 
 </manifest>
