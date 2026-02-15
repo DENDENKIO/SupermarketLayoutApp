@@ -17,6 +17,16 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        
+        // local.propertiesからAPIキーを読み込み
+        val properties = org.jetbrains.kotlin.konan.properties.Properties()
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            properties.load(localPropertiesFile.inputStream())
+        }
+        
+        val perplexityApiKey = properties.getProperty("PERPLEXITY_API_KEY") ?: ""
+        buildConfigField("String", "PERPLEXITY_API_KEY", "\"$perplexityApiKey\"")
     }
 
     buildTypes {
