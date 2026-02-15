@@ -69,7 +69,8 @@ class LayoutCanvasView @JvmOverloads constructor(
     private var draggedFixture: FixtureEntity? = null
     private var lastTouchX = 0f
     private var lastTouchY = 0f
-    private var isPanning = false
+    private var dragStartX = 0f
+    private var dragStartY = 0f
     
     // === リスナー ===
     var onFixtureSelectedListener: ((FixtureEntity?) -> Unit)? = null
@@ -155,30 +156,37 @@ class LayoutCanvasView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        // ピンチズーム処理
-        scaleDetector.onTouchEvent(event)
+        // ピンチズーム処理（マルチタッチ時）
+        if (event.pointerCount > 1) {
+            scaleDetector.onTouchEvent(event)
+            return true
+        }
         
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 lastTouchX = event.x
                 lastTouchY = event.y
+                dragStartX = event.x
+                dragStartY = event.y
                 
                 // タップされた什器を検出
                 val canvasX = (event.x - offsetX) / scaleFactor
                 val canvasY = (event.y - offsetY) / scaleFactor
                 
-                draggedFixture = findFixtureAt(canvasX, canvasY)
+                val tappedFixture = findFixtureAt(canvasX, canvasY)
                 
-                if (draggedFixture != null) {
+                if (tappedFixture != null) {
+                    // 什器を選択
+                    draggedFixture = tappedFixture
+                    selectedFixture = tappedFixture
                     isDragging = true
-                    selectedFixture = draggedFixture
                     onFixtureSelectedListener?.invoke(selectedFixture)
                     invalidate()
-                } else if (event.pointerCount == 1) {
-                    // 空白をタップ = 選択解除 or パン開始
+                } else {
+                    // 空白をタップ = 選択解除
                     selectedFixture = null
+                    draggedFixture = null
                     onFixtureSelectedListener?.invoke(null)
-                    isPanning = true
                     invalidate()
                 }
                 return true
@@ -188,26 +196,39 @@ class LayoutCanvasView @JvmOverloads constructor(
                 val dx = event.x - lastTouchX
                 val dy = event.y - lastTouchY
                 
+                // 移動距離が小さい場合はタップとみなす
+                val totalDx = event.x - dragStartX
+                val totalDy = event.y - dragStartY
+                val distance = Math.sqrt((totalDx * totalDx + totalDy * totalDy).toDouble())
+                
+                if (distance < 10) {
+                    // タップとみなす
+                    return true
+                }
+                
                 if (isDragging && draggedFixture != null) {
                     // 什器をドラッグ
-                    val newX = draggedFixture!!.positionX + dx / (scaleFactor * cmToPixel)
-                    val newY = draggedFixture!!.positionY + dy / (scaleFactor * cmToPixel)
+                    val fixture = draggedFixture!!
+                    
+                    // スクリーン座標の移動量をキャンバス座標に変換
+                    val canvasDx = dx / scaleFactor / cmToPixel
+                    val canvasDy = dy / scaleFactor / cmToPixel
+                    
+                    val newX = fixture.positionX + canvasDx
+                    val newY = fixture.positionY + canvasDy
                     
                     // グリッドスナップ
                     val snappedX = snapToGrid(newX)
                     val snappedY = snapToGrid(newY)
                     
-                    draggedFixture = draggedFixture!!.copy(
+                    // 什器の位置を更新
+                    val updatedFixture = fixture.copy(
                         positionX = snappedX,
                         positionY = snappedY
                     )
                     
-                    updateFixture(draggedFixture!!)
-                    invalidate()
-                } else if (isPanning && event.pointerCount == 1) {
-                    // キャンバスをパン
-                    offsetX += dx
-                    offsetY += dy
+                    draggedFixture = updatedFixture
+                    updateFixture(updatedFixture)
                     invalidate()
                 }
                 
@@ -218,12 +239,12 @@ class LayoutCanvasView @JvmOverloads constructor(
             
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (isDragging && draggedFixture != null) {
+                    // ドラッグ終了を通知
                     onFixtureMovedListener?.invoke(draggedFixture!!)
                 }
                 
                 isDragging = false
                 draggedFixture = null
-                isPanning = false
                 return true
             }
         }
