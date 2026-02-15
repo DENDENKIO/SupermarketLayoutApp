@@ -51,8 +51,11 @@ class ProductJsonManagerActivity : AppCompatActivity() {
     }
 
     private fun setupToolbar() {
-        setSupportActionBar(binding.toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        // ToolbarをActionBarとして設定せず、直接ナビゲーションを設定
+        binding.toolbar.setNavigationIcon(androidx.appcompat.R.drawable.abc_ic_ab_back_material)
+        binding.toolbar.setNavigationOnClickListener {
+            finish()
+        }
     }
 
     private fun setupRecyclerView() {
@@ -181,11 +184,6 @@ class ProductJsonManagerActivity : AppCompatActivity() {
             
             Toast.makeText(this@ProductJsonManagerActivity, "JSONをクリップボードにコピーしました", Toast.LENGTH_SHORT).show()
         }
-    }
-
-    override fun onSupportNavigateUp(): Boolean {
-        finish()
-        return true
     }
 
     /**
