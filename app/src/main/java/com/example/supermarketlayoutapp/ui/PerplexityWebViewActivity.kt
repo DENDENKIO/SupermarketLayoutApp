@@ -17,29 +17,23 @@ import android.util.Log
  * Perplexity.ai連携WebView Activity
  * 
  * AIへのプロンプト自動注入、応答監視、JSONデータ抽出を実装。
- * LanguagePracticeAPPの実装パターンを完全移植。
- * 
- * 主要機能:
- * - JavaScript Injection: Perplexity.ai専用最適化セレクタ
- * - DONE_SENTINEL方式: 生成完了の確実な検出
- * - 安定化判定: テキスト長7回連続不変チェック
- * - 状態管理: InjectionState enumによる厳密な制御
+ * **複数JANコードを一括処理**し、速度を大幅に向上。
  * 
  * @see docs/AI_AUTO_INJECTION_SPEC.md 詳細仕様書
  */
 class PerplexityWebViewActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPerplexityWebviewBinding
-    private lateinit var janCode: String
+    private lateinit var janCodeList: List<String>
     private val json = Json { ignoreUnknownKeys = true }
     private val handler = Handler(Looper.getMainLooper())
     
     // 注入状態管理
     private enum class InjectionState {
-        NOT_STARTED,   // 未実行
-        INJECTING,     // 注入実行中
-        COMPLETED,     // 注入完了
-        FAILED         // 入力欄検知失敗
+        NOT_STARTED,
+        INJECTING,
+        COMPLETED,
+        FAILED
     }
     
     private var injectionState = InjectionState.NOT_STARTED
@@ -62,9 +56,9 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         private const val TAG = "PerplexityWebView"
         private const val INITIAL_INJECTION_DELAY = 3000L
         private const val RETRY_INJECTION_DELAY = 2000L
-        private const val SEND_BUTTON_DELAY = 500L  // Perplexity専用は500ms
-        private const val MONITORING_INTERVAL = 1500L  // 1.5秒間隔
-        private const val REQUIRED_STABLE_COUNT = 7  // 7回連続不変で完了判定
+        private const val SEND_BUTTON_DELAY = 500L
+        private const val MONITORING_INTERVAL = 1500L
+        private const val REQUIRED_STABLE_COUNT = 7
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -73,14 +67,16 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         binding = ActivityPerplexityWebviewBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        janCode = intent.getStringExtra("JAN_CODE") ?: ""
+        // 複数JANコードを受け取る
+        janCodeList = intent.getStringArrayExtra("JAN_CODE_LIST")?.toList() 
+            ?: listOf(intent.getStringExtra("JAN_CODE") ?: "")
         
-        // promptSentinelCountを事前計算
-        val prompt = buildPrompt(janCode)
+        val prompt = buildPrompt(janCodeList)
         promptSentinelCount = countSentinel(prompt, DONE_SENTINEL)
         
         Log.d(TAG, "========================================")
-        Log.d(TAG, "Activity起動: JAN=$janCode")
+        Log.d(TAG, "Activity起動: JANリスト=${janCodeList.size}件")
+        Log.d(TAG, "JAN: $janCodeList")
         Log.d(TAG, "promptSentinelCount=$promptSentinelCount")
         Log.d(TAG, "========================================")
         Log.d(TAG, "注入予定プロンプト(全文):")
@@ -98,9 +94,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         isMonitoring = false
     }
 
-    /**
-     * WebViewの初期設定
-     */
     private fun setupWebView() {
         binding.webView.apply {
             settings.apply {
@@ -111,7 +104,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
                 loadWithOverviewMode = true
                 useWideViewPort = true
                 
-                // モバイルChromeとして認識させる (UserAgent最適化)
                 userAgentString = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 " +
                     "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
             }
@@ -125,7 +117,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
                         injectionState == InjectionState.NOT_STARTED) {
                         Log.d(TAG, "${INITIAL_INJECTION_DELAY}ms後に注入スケジュール")
                         
-                        // 初期ページ長を記録
                         view?.evaluateJavascript("document.body.innerText.length") { lengthStr ->
                             initialPageTextLength = lengthStr?.toIntOrNull() ?: 0
                             Log.d(TAG, "初期ページテキスト長: $initialPageTextLength")
@@ -133,15 +124,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
                         
                         schedulePromptInjection()
                     }
-                }
-                
-                override fun onReceivedError(
-                    view: WebView?,
-                    request: WebResourceRequest?,
-                    error: WebResourceError?
-                ) {
-                    super.onReceivedError(view, request, error)
-                    Log.e(TAG, "WebViewエラー: ${error?.description}")
                 }
             }
 
@@ -153,7 +135,7 @@ class PerplexityWebViewActivity : AppCompatActivity() {
                             ConsoleMessage.MessageLevel.WARNING -> "WARN"
                             else -> "INFO"
                         }
-                        Log.d("$TAG-Console", "[$level] ${it.message()} (${it.sourceId()}:${it.lineNumber()})")
+                        Log.d("$TAG-Console", "[$level] ${it.message()}")
                     }
                     return true
                 }
@@ -161,9 +143,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * ボタンの設定
-     */
     private fun setupButtons() {
         binding.btnInjectPrompt.setOnClickListener {
             Log.d(TAG, "手動注入ボタンが押されました")
@@ -177,26 +156,17 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Perplexity.aiを読み込む
-     */
     private fun loadPerplexity() {
         Log.d(TAG, "Perplexity.aiを読み込み中...")
         binding.webView.loadUrl("https://www.perplexity.ai/")
     }
 
-    /**
-     * プロンプト注入をスケジュール
-     */
     private fun schedulePromptInjection() {
         handler.postDelayed({ 
             attemptInjectionWithRetry() 
         }, INITIAL_INJECTION_DELAY)
     }
 
-    /**
-     * リトライ付き注入試行
-     */
     private fun attemptInjectionWithRetry() {
         if (injectionState == InjectionState.COMPLETED || 
             injectionAttempts >= MAX_INJECTION_ATTEMPTS) {
@@ -216,7 +186,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         Log.d(TAG, "★★★ 注入試行 #$injectionAttempts/$MAX_INJECTION_ATTEMPTS ★★★")
         injectPrompt()
         
-        // 失敗時はRETRY_INJECTION_DELAY後に再試行
         handler.postDelayed({ 
             if (injectionState != InjectionState.COMPLETED) {
                 Log.d(TAG, "前回の注入が失敗。${RETRY_INJECTION_DELAY}ms後に再試行...")
@@ -225,10 +194,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         }, RETRY_INJECTION_DELAY)
     }
 
-    /**
-     * プロンプトをWebViewに注入
-     * LanguagePracticeAPPの実装パターンを完全移植
-     */
     private fun injectPrompt() {
         if (injectionState == InjectionState.INJECTING) {
             Log.d(TAG, "注入処理が既に実行中です。スキップします。")
@@ -237,7 +202,7 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         
         injectionState = InjectionState.INJECTING
         
-        val prompt = buildPrompt(janCode)
+        val prompt = buildPrompt(janCodeList)
         val safePrompt = jsEscape(prompt)
         
         Log.d(TAG, "★★★ プロンプト注入開始 ★★★")
@@ -275,17 +240,12 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Perplexity.ai専用の注入スクリプトを生成
-     * Lexicalエディタ対応、Selection API、execCommandを使用
-     */
     private fun buildPerplexityInjectionScript(safePrompt: String): String {
         return """
 (function() {
   console.log('[Injection] ★★★ Perplexity.aiプロンプト注入開始 ★★★');
   var prompt = "$safePrompt";
   
-  // Perplexity.ai専用セレクタ (優先順位順)
   var input = 
     document.querySelector('#ask-input[contenteditable="true"][data-lexical-editor="true"]') ||
     document.querySelector('#ask-input[contenteditable="true"]') ||
@@ -297,10 +257,8 @@ class PerplexityWebViewActivity : AppCompatActivity() {
     return 'INPUT_NOT_FOUND';
   }
   
-  console.log('[Injection] 入力欄検出成功: ' + input.tagName);
   input.focus();
   
-  // Selection APIで既存テキストクリア
   try {
     var sel = window.getSelection();
     var range = document.createRange();
@@ -308,22 +266,15 @@ class PerplexityWebViewActivity : AppCompatActivity() {
     sel.removeAllRanges();
     sel.addRange(range);
     document.execCommand('delete');
-    console.log('[Injection] Selection APIでクリア完了');
-  } catch(e) {
-    console.warn('[Injection] Selection API失敗:', e);
-  }
+  } catch(e) {}
   
-  // execCommand('insertText')でテキスト挿入
   var ok = false;
   try {
     ok = document.execCommand('insertText', false, prompt);
-    console.log('[Injection] execCommand(insertText): ' + ok);
   } catch(e) {
-    console.warn('[Injection] execCommand失敗:', e);
     ok = false;
   }
   
-  // フォールバック
   if (!ok) {
     try {
       input.textContent = prompt;
@@ -332,13 +283,9 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         data: prompt, 
         inputType: 'insertText' 
       }));
-      console.log('[Injection] フォールバック: textContent + InputEvent');
-    } catch(e) {
-      console.error('[Injection] フォールバック失敗:', e);
-    }
+    } catch(e) {}
   }
   
-  // 送信ボタンの自動クリック (${SEND_BUTTON_DELAY}ms後)
   setTimeout(function() {
     var sendBtn = 
       document.querySelector('button[aria-label="送信"]') ||
@@ -347,10 +294,8 @@ class PerplexityWebViewActivity : AppCompatActivity() {
     
     if (sendBtn) {
       sendBtn.click();
-      console.log('[Injection] ★ SENT - 送信完了! ★');
       return 'SENT';
     } else {
-      console.warn('[Injection] 送信ボタン未検出。Enterキーを試行');
       input.dispatchEvent(new KeyboardEvent('keydown', { 
         bubbles: true, 
         key: 'Enter', 
@@ -366,10 +311,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         """.trimIndent()
     }
 
-    /**
-     * 自動監視ループを開始
-     * 安定化判定アルゴリズム: テキスト長が7回連続不変で完了
-     */
     private fun startAutoMonitoring() {
         Log.d(TAG, "========== 監視ループ開始 ==========")
         
@@ -378,15 +319,11 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         lastTextLength = 0
         stableCount = 0
         
-        // 2秒待機してから監視開始
         handler.postDelayed({
             monitoringLoop()
         }, 2000)
     }
 
-    /**
-     * 監視ループ本体
-     */
     private fun monitoringLoop() {
         if (!isMonitoring) return
         
@@ -396,7 +333,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
             val totalSentinelCount = countSentinel(currentText, DONE_SENTINEL)
             val requiredCount = promptSentinelCount + 1
             
-            // [A] AI応答開始検出
             if (!responseStarted) {
                 if (currentLength > initialPageTextLength + 100) {
                     responseStarted = true
@@ -411,7 +347,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
             Log.d(TAG, "監視中: Sentinel=$totalSentinelCount/$requiredCount, " +
                        "長さ=$currentLength, 安定=$stableCount/$REQUIRED_STABLE_COUNT")
             
-            // [B] DONE_SENTINEL数チェック
             if (totalSentinelCount < requiredCount) {
                 stableCount = 0
                 lastTextLength = currentLength
@@ -419,7 +354,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
                 return@evaluateJavascript
             }
             
-            // [C] テキスト長安定化判定
             if (currentLength != lastTextLength) {
                 stableCount = 0
                 lastTextLength = currentLength
@@ -427,7 +361,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
                 stableCount++
             }
             
-            // [D] 生成完了判定
             if (stableCount >= REQUIRED_STABLE_COUNT) {
                 isMonitoring = false
                 Log.d(TAG, "★★★ 生成完了検出！結果を取得中... ★★★")
@@ -450,10 +383,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * ページ全体からAI応答部分を抽出
-     * LanguagePracticeAPPのextractAiResponse()を移植
-     */
     private fun extractAiResponse(
         fullText: String, 
         promptSentinelCount: Int, 
@@ -463,7 +392,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         Log.d(TAG, "fullText.length=${fullText.length}")
         Log.d(TAG, "promptSentinelCount=$promptSentinelCount")
         
-        // ① プロンプト部分をスキップ
         var pos = 0
         for (i in 0 until promptSentinelCount) {
             pos = fullText.indexOf(sentinel, pos)
@@ -477,7 +405,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         val afterPrompt = if (pos > 0) fullText.substring(pos) else fullText
         Log.d(TAG, "プロンプトスキップ後の長さ: ${afterPrompt.length}")
         
-        // ② AI応答の終了位置を検索
         val aiSentinelPos = afterPrompt.indexOf(sentinel)
         val extractEndPos = if (aiSentinelPos != -1) {
             Log.d(TAG, "AI Sentinel検出: pos=$aiSentinelPos")
@@ -493,7 +420,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
             }
         }
         
-        // ③ 開始マーカーを検索 (<DATA_START>)
         val startMarker = "<DATA_START>"
         val markerPos = afterPrompt.indexOf(startMarker)
         
@@ -506,7 +432,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
             afterPrompt.substring(extractStart, extractEndPos)
         }
         
-        // ④ クリーニング
         val cleaned = extracted
             .replace(sentinel, "")
             .replace("⟦LP_DONE_9F3A2C⟧", "")
@@ -521,9 +446,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         return cleaned
     }
 
-    /**
-     * データ抽出処理 (手動ボタン用)
-     */
     private fun extractData() {
         Log.d(TAG, "========== データ抽出開始 (手動) ==========")
         
@@ -544,49 +466,66 @@ class PerplexityWebViewActivity : AppCompatActivity() {
     }
 
     /**
-     * プロンプトを構築
+     * 複数JANコード用のプロンプトを構築
      */
-    private fun buildPrompt(jan: String): String {
+    private fun buildPrompt(janList: List<String>): String {
+        val janListStr = janList.joinToString(", ")
+        
         return """
 あなたはスーパーマーケット向け棚割システムのための商品マスターJSONを作成します。
 必ず以下の制約を守ってください。
 
 # 出力形式
 - 回答は必ず次の形式だけを出力してください。
-- 「<DATA_START>」の行から「<DATA_END>」の行までの間に、1つのJSONだけを出力してください。
+- 「<DATA_START>」の行から「<DATA_END>」の行までの間に、**JSON配列**を出力してください。
 - 説明・補足・会話文など、JSON以外のテキストは絶対に出力しないでください。
 
-# JSONスキーマ
+# JSONスキーマ (配列形式)
 <DATA_START>
-{
-  "jan": "4901234567890",
-  "maker": "〇〇株式会社",
-  "name": "サンプル商品",
-  "category": "清涼飲料",
-  "min_price": 98,
-  "max_price": 128,
-  "width_cm": 5.5,
-  "height_cm": 18.0,
-  "depth_cm": 5.5
-}
+[
+  {
+    "jan": "4901234567890",
+    "maker": "〇〇株式会社",
+    "name": "サンプル商品",
+    "category": "清涼飲料",
+    "min_price": 98,
+    "max_price": 128,
+    "width_cm": 5.5,
+    "height_cm": 18.0,
+    "depth_cm": 5.5
+  },
+  {
+    "jan": "4901234567891",
+    "maker": "△△株式会社",
+    "name": "サンプル商品2",
+    "category": "食品",
+    "min_price": 150,
+    "max_price": 200,
+    "width_cm": 10.0,
+    "height_cm": 15.0,
+    "depth_cm": 8.0
+  }
+]
 <DATA_END>
 
 # ルール
+- 必ず**JSON配列**で出力し、入力JANコードごとに1つのオブジェクトを作成すること。
 - 数値項目は数値型で出力し、単位はすべてcmとする。
 - サイズが不明な場合は null を入れる。
 - 価格が不明な場合は min_price, max_price に null を入れる。
 - 上のスキーマとキー名は絶対に変更しないこと。
+- JANコードが見つからない場合でも、そのJANのオブジェクトを配列に含め、nameを"不明"としてください。
 
 # 入力情報
-JAN: $jan
+JANコードリスト: $janListStr
 
-この入力情報を使い、上記と同じ形式でJSONを1つだけ出力してください。
+これらの入力情報を使い、上記と同じ形式でJSON配列を出力してください。
 ${DONE_SENTINEL}
         """.trimIndent()
     }
 
     /**
-     * データをパースして結果を返却
+     * 複数商品データをパースして結果を返却
      */
     private fun parseAndReturnData(aiResponse: String) {
         try {
@@ -595,9 +534,11 @@ ${DONE_SENTINEL}
                 Log.d(TAG, "抽出されたJSON:")
                 Log.d(TAG, jsonString)
                 
-                val productData = json.decodeFromString<ProductData>(jsonString)
-                Log.d(TAG, "JSONパース成功: $productData")
-                returnResult(productData)
+                // JSON配列としてパース
+                val productDataList = json.decodeFromString<List<ProductData>>(jsonString)
+                Log.d(TAG, "JSONパース成功: ${productDataList.size}件")
+                
+                returnResults(productDataList)
             } else {
                 Log.e(TAG, "JSON抽出に失敗しました")
                 Toast.makeText(
@@ -616,9 +557,6 @@ ${DONE_SENTINEL}
         }
     }
 
-    /**
-     * AIテキストからJSONを抽出
-     */
     private fun extractJsonFromAiText(text: String): String? {
         val startMarker = "<DATA_START>"
         val endMarker = "<DATA_END>"
@@ -644,32 +582,36 @@ ${DONE_SENTINEL}
     }
 
     /**
-     * 結果をIntentで返してActivityを終了
+     * 複数の結果をIntentで返してActivityを終了
      */
-    private fun returnResult(data: ProductData) {
-        Log.d(TAG, "========== 結果返却開始 ==========")
+    private fun returnResults(dataList: List<ProductData>) {
+        Log.d(TAG, "========== 複数結果返却開始 (${dataList.size}件) ==========")
         
-        val resultIntent = Intent().apply {
-            putExtra("jan", data.jan)
-            putExtra("maker", data.maker)
-            putExtra("name", data.name)
-            putExtra("category", data.category)
-            putExtra("min_price", data.min_price ?: 0)
-            putExtra("max_price", data.max_price ?: 0)
-            putExtra("width_mm", data.width_cm?.times(10)?.toInt() ?: 0)
-            putExtra("height_mm", data.height_cm?.times(10)?.toInt() ?: 0)
-            putExtra("depth_mm", data.depth_cm?.times(10)?.toInt() ?: 0)
+        val resultIntent = Intent()
+        
+        // 配列で返却
+        resultIntent.putExtra("product_count", dataList.size)
+        
+        dataList.forEachIndexed { index, data ->
+            val prefix = "product_$index"
+            resultIntent.putExtra("${prefix}_jan", data.jan)
+            resultIntent.putExtra("${prefix}_maker", data.maker)
+            resultIntent.putExtra("${prefix}_name", data.name)
+            resultIntent.putExtra("${prefix}_category", data.category)
+            resultIntent.putExtra("${prefix}_min_price", data.min_price ?: 0)
+            resultIntent.putExtra("${prefix}_max_price", data.max_price ?: 0)
+            resultIntent.putExtra("${prefix}_width_mm", data.width_cm?.times(10)?.toInt() ?: 0)
+            resultIntent.putExtra("${prefix}_height_mm", data.height_cm?.times(10)?.toInt() ?: 0)
+            resultIntent.putExtra("${prefix}_depth_mm", data.depth_cm?.times(10)?.toInt() ?: 0)
+            
+            Log.d(TAG, "[$index] JAN=${data.jan}, 名称=${data.name}")
         }
         
-        Log.d(TAG, "返却データ: JAN=${data.jan}, 名称=${data.name}")
         Log.d(TAG, "onResultReceived呼び出し完了")
         setResult(RESULT_OK, resultIntent)
         finish()
     }
 
-    /**
-     * DONE_SENTINELの出現回数をカウント
-     */
     private fun countSentinel(text: String, sentinel: String): Int {
         if (text.isEmpty() || sentinel.isEmpty()) return 0
         var count = 0
@@ -683,9 +625,6 @@ ${DONE_SENTINEL}
         return count
     }
 
-    /**
-     * JavaScript文字列として安全にエスケープ
-     */
     private fun jsEscape(s: String): String {
         val builder = StringBuilder()
         for (c in s) {
@@ -702,9 +641,6 @@ ${DONE_SENTINEL}
         return builder.toString()
     }
 
-    /**
-     * evaluateJavascript()から返される文字列をデコード
-     */
     private fun decodeJsString(raw: String): String {
         var text = raw.removeSurrounding("\"")
         text = text.replace("\\n", "\n")
@@ -721,9 +657,6 @@ ${DONE_SENTINEL}
         return text
     }
 
-    /**
-     * 商品データクラス (JSONパース用)
-     */
     @Serializable
     data class ProductData(
         val jan: String,
