@@ -241,9 +241,7 @@ JAN: $jan
             when {
                 c == '\\' -> builder.append("\\\\")
                 c == '"' -> builder.append("\\\"")
-                c == '
-' -> builder.append("\
-")
+                c == '\n' -> builder.append("\\n")
                 c == '\r' -> builder.append("\\r")
                 else -> builder.append(c)
             }
@@ -253,9 +251,7 @@ JAN: $jan
 
     private fun decodeJsString(raw: String): String {
         var text = raw.removeSurrounding("\"")
-        text = text.replace("\
-", "
-")
+        text = text.replace("\\n", "\n")
         text = text.replace("\\\"", "\"")
         return text
     }
