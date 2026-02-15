@@ -10,6 +10,7 @@ import com.example.supermarketlayoutapp.data.entity.FixtureEntity
 import com.example.supermarketlayoutapp.data.entity.FixtureType
 import com.example.supermarketlayoutapp.databinding.ActivityLayoutEditorBinding
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 /**
  * 2D売場レイアウトエディター Activity
@@ -29,12 +30,7 @@ class LayoutEditorActivity : AppCompatActivity() {
 
         // Repository初期化
         val database = AppDatabase.getDatabase(this)
-        repository = AppRepository(
-            database.productDao(),
-            database.fixtureDao(),
-            database.shelfDao(),
-            database.facingDao()
-        )
+        repository = AppRepository(database)
 
         setupToolbar()
         setupCanvas()
@@ -153,7 +149,8 @@ class LayoutEditorActivity : AppCompatActivity() {
      */
     private fun loadFixtures() {
         lifecycleScope.launch {
-            val fixtures = repository.getAllFixtures()
+            // Flowから最初の値を取得
+            val fixtures = repository.getAllFixtures().first()
             binding.canvasView.setFixtures(fixtures)
             
             // 次の什器番号を設定
