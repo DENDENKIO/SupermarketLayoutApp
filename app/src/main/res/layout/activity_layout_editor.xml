@@ -24,12 +24,14 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="#F5F5F5"
-        android:padding="8dp"
+        android:padding="12dp"
         app:layout_constraintTop_toBottomOf="@id/toolbar">
 
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
             android:orientation="horizontal">
 
             <Button
@@ -37,8 +39,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
+                android:layout_marginStart="8dp"
                 android:text="ゴンドラ"
-                android:textSize="12sp" />
+                android:textSize="14sp" />
 
             <Button
                 android:id="@+id/btnAddEnd"
@@ -46,7 +49,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:text="エンド"
-                android:textSize="12sp" />
+                android:textSize="14sp" />
 
             <Button
                 android:id="@+id/btnAddIsland"
@@ -54,7 +57,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:text="アイランド"
-                android:textSize="12sp" />
+                android:textSize="14sp" />
 
             <Button
                 android:id="@+id/btnAddFreezer"
@@ -62,14 +65,15 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:text="冷蔵庫"
-                android:textSize="12sp" />
+                android:textSize="14sp" />
 
             <Button
                 android:id="@+id/btnAddRegister"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
                 android:text="レジ"
-                android:textSize="12sp" />
+                android:textSize="14sp" />
         </LinearLayout>
     </HorizontalScrollView>
 
@@ -89,7 +93,7 @@
         android:id="@+id/propertiesPanel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="8dp"
+        android:layout_margin="16dp"
         android:visibility="gone"
         app:cardCornerRadius="8dp"
         app:cardElevation="4dp"
@@ -106,6 +110,7 @@
                 android:id="@+id/tvSelectedFixtureName"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
                 android:text="ゴンドラ 1"
                 android:textSize="18sp"
                 android:textStyle="bold" />
@@ -114,13 +119,15 @@
                 android:id="@+id/tvSelectedFixtureInfo"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
                 android:layout_marginTop="4dp"
                 android:text="120cm x 60cm | 位置: (100, 150)"
                 android:textSize="14sp" />
 
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
                 android:layout_marginTop="16dp"
                 android:gravity="center"
                 android:orientation="horizontal">
