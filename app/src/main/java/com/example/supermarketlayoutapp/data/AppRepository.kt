@@ -50,4 +50,23 @@ class AppRepository(private val database: AppDatabase) {
     fun getFacingsByShelf(shelfId: Long): Flow<List<FacingEntity>> = facingDao.getFacingsByShelf(shelfId)
     fun getFacingsByProduct(productId: Long): Flow<List<FacingEntity>> = facingDao.getFacingsByProduct(productId)
     suspend fun deleteFacingsByShelfId(shelfId: Long) = facingDao.deleteByShelfId(shelfId)
+    
+    // Location操作
+    private val locationDao = database.locationDao()
+    
+    suspend fun insertLocation(location: LocationEntity): Long = locationDao.insert(location)
+    suspend fun updateLocation(location: LocationEntity) = locationDao.update(location)
+    suspend fun deleteLocation(location: LocationEntity) = locationDao.delete(location)
+    suspend fun getLocationById(id: Long): LocationEntity? = locationDao.getLocationById(id)
+    fun getAllLocations(): Flow<List<LocationEntity>> = locationDao.getAllLocations()
+    
+    // DisplayProduct操作
+    private val displayProductDao = database.displayProductDao()
+    
+    suspend fun insertDisplayProduct(displayProduct: DisplayProductEntity): Long = displayProductDao.insert(displayProduct)
+    suspend fun updateDisplayProduct(displayProduct: DisplayProductEntity) = displayProductDao.update(displayProduct)
+    suspend fun deleteDisplayProduct(displayProduct: DisplayProductEntity) = displayProductDao.delete(displayProduct)
+    fun getDisplayProductsByLocation(locationId: Long): Flow<List<DisplayProductEntity>> = displayProductDao.getDisplayProductsByLocation(locationId)
+    fun getDisplayProductsWithProductByLocation(locationId: Long): Flow<List<DisplayProductWithProduct>> = displayProductDao.getDisplayProductsWithProductByLocation(locationId)
+    suspend fun deleteAllDisplayProductsByLocation(locationId: Long) = displayProductDao.deleteAllByLocation(locationId)
 }
