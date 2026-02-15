@@ -21,7 +21,7 @@
         android:id="@+id/janInputLayout"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:hint="JANコード（複数場合はカンマ区切り）"
+        android:hint="JANコード（複数場合はカンマ区切りまたは改行区切り）"
         app:layout_constraintTop_toBottomOf="@id/titleText"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -31,10 +31,27 @@
             android:id="@+id/janEditText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="text"
-            android:maxLines="3" />
+            android:inputType="textMultiLine"
+            android:minLines="3"
+            android:maxLines="10"
+            android:gravity="top|start"
+            android:scrollbars="vertical" />
 
     </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- ボタンを横並びに配置 -->
+    <Button
+        android:id="@+id/loadFileButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="ファイルから読み込み"
+        style="@style/Widget.Material3.Button.TonalButton"
+        app:layout_constraintTop_toBottomOf="@id/janInputLayout"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/searchButton"
+        app:layout_constraintHorizontal_weight="1"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="8dp" />
 
     <Button
         android:id="@+id/searchButton"
@@ -42,9 +59,11 @@
         android:layout_height="wrap_content"
         android:text="商品検索開始"
         app:layout_constraintTop_toBottomOf="@id/janInputLayout"
-        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintStart_toEndOf="@id/loadFileButton"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp" />
+        app:layout_constraintHorizontal_weight="1"
+        android:layout_marginTop="16dp"
+        android:layout_marginStart="8dp" />
 
     <ProgressBar
         android:id="@+id/progressBar"
