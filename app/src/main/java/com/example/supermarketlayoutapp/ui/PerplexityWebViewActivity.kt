@@ -18,6 +18,7 @@ import android.util.Log
  * 
  * AIへのプロンプト自動注入、応答監視、JSONデータ抽出を実装。
  * **複数JANコードを一括処理**し、速度を大幅に向上。
+ * メーカー公式サイトまたはAmazon.co.jpから商品情報を取得。
  * 
  * @see docs/AI_AUTO_INJECTION_SPEC.md 詳細仕様書
  */
@@ -416,7 +417,7 @@ class PerplexityWebViewActivity : AppCompatActivity() {
 
     /**
      * 複数JANコード用のプロンプトを構築
-     * DONE_SENTINELを使用せず、<DATA_END>のみで完了判定
+     * メーカー公式サイトまたはAmazon.co.jpから情報取得するよう指示
      */
     private fun buildPrompt(janList: List<String>): String {
         val janListStr = janList.joinToString(", ")
@@ -424,6 +425,12 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         return """
 あなたはスーパーマーケット向け棚割システムのための商品マスターJSONを作成します。
 必ず以下の制約を守ってください。
+
+# 情報源の指定
+- **必ずメーカー公式サイトまたはAmazon.co.jpから商品情報を取得してください**
+- メーカー公式サイトが見つかる場合は、メーカーサイトを優先してください
+- Amazon.co.jpで商品ページが見つかる場合は、そこから正確なサイズ・価格情報を取得してください
+- 推測や不確かな情報は避け、信頼できるソースから取得した情報のみを使用してください
 
 # 出力形式
 - 回答は必ず次の形式だけを出力してください。
@@ -443,17 +450,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
     "width_cm": 5.5,
     "height_cm": 18.0,
     "depth_cm": 5.5
-  },
-  {
-    "jan": "4901234567891",
-    "maker": "△△株式会社",
-    "name": "サンプル商品2",
-    "category": "食品",
-    "min_price": 150,
-    "max_price": 200,
-    "width_cm": 10.0,
-    "height_cm": 15.0,
-    "depth_cm": 8.0
   }
 ]
 <DATA_END>
@@ -465,11 +461,12 @@ class PerplexityWebViewActivity : AppCompatActivity() {
 - 価格が不明な場合は min_price, max_price に null を入れる。
 - 上のスキーマとキー名は絶対に変更しないこと。
 - JANコードが見つからない場合でも、そのJANのオブジェクトを配列に含め、nameを"不明"としてください。
+- **重要**: メーカー公式サイトまたはAmazon.co.jpのURLを参照し、そこから取得した情報であることを確認してください。
 
 # 入力情報
 JANコードリスト: $janListStr
 
-これらの入力情報を使い、上記と同じ形式でJSON配列を出力してください。
+これらの入力情報を使い、メーカー公式サイトまたはAmazon.co.jpから商品情報を検索し、上記と同じ形式でJSON配列を出力してください。
         """.trimIndent()
     }
 
