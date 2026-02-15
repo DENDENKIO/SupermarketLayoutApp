@@ -30,4 +30,14 @@
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginTop="48dp" />
 
+    <Button
+        android:id="@+id/btnLayoutEditor"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="売場レイアウト編集"
+        app:layout_constraintTop_toBottomOf="@id/btnProductRegister"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="16dp" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>
