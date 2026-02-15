@@ -31,6 +31,11 @@
             android:theme="@style/Theme.SupermarketLayoutApp" />
         
         <activity
+            android:name=".ui.ProductJsonManagerActivity"
+            android:label="商品JSON管理"
+            android:theme="@style/Theme.SupermarketLayoutApp" />
+        
+        <activity
             android:name=".ui.PerplexityWebViewActivity"
             android:label="AI検索"
             android:theme="@style/Theme.SupermarketLayoutApp" />
