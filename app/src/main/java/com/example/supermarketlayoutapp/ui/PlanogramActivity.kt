@@ -389,24 +389,24 @@ JSON形式で各商品の配置を返してください：
 
         override fun getItemCount(): Int = displayProducts.size
 
-        inner class ViewHolder(private val binding: ItemDisplayProductBinding) :
-            RecyclerView.ViewHolder(binding.root) {
+        inner class ViewHolder(private val itemBinding: ItemDisplayProductBinding) :
+            RecyclerView.ViewHolder(itemBinding.root) {
 
             fun bind(dpWithProduct: DisplayProductWithProduct) {
                 val dp = dpWithProduct.displayProduct
                 val product = dpWithProduct.product
                 
-                binding.tvProductName.text = product.name
-                binding.tvQuantity.text = "数量: ${dp.quantity}"
+                itemBinding.tvProductName.text = product.name
+                itemBinding.tvQuantity.text = "数量: ${dp.quantity}"
                 
                 val positionText = if (dp.level != null && dp.positionX != null) {
                     "段: ${dp.level}, X: ${dp.positionX}cm, フェイス: ${dp.facings}"
                 } else {
                     "未配置"
                 }
-                binding.tvPosition.text = positionText
+                itemBinding.tvPosition.text = positionText
 
-                binding.btnDelete.setOnClickListener {
+                itemBinding.btnDelete.setOnClickListener {
                     onDeleteClick(dpWithProduct)
                 }
             }
