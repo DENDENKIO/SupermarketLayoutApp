@@ -47,10 +47,7 @@ class PerplexityWebViewActivity : AppCompatActivity() {
     private var stableCount = 0
     private var initialPageTextLength = 0
     private var monitoringRunnable: Runnable? = null
-    
-    // DONE_SENTINEL関連
-    private val DONE_SENTINEL = "⟦LP_DONE_9F3A2C⟧"
-    private var promptSentinelCount = 0
+    private var monitoringStartTime = 0L
 
     companion object {
         private const val TAG = "PerplexityWebView"
@@ -58,7 +55,8 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         private const val RETRY_INJECTION_DELAY = 2000L
         private const val SEND_BUTTON_DELAY = 500L
         private const val MONITORING_INTERVAL = 1500L
-        private const val REQUIRED_STABLE_COUNT = 7
+        private const val REQUIRED_STABLE_COUNT = 5  // 7.5秒間安定
+        private const val MONITORING_TIMEOUT = 60000L  // 60秒でタイムアウト
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -71,16 +69,9 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         janCodeList = intent.getStringArrayExtra("JAN_CODE_LIST")?.toList() 
             ?: listOf(intent.getStringExtra("JAN_CODE") ?: "")
         
-        val prompt = buildPrompt(janCodeList)
-        promptSentinelCount = countSentinel(prompt, DONE_SENTINEL)
-        
         Log.d(TAG, "========================================")
         Log.d(TAG, "Activity起動: JANリスト=${janCodeList.size}件")
         Log.d(TAG, "JAN: $janCodeList")
-        Log.d(TAG, "promptSentinelCount=$promptSentinelCount")
-        Log.d(TAG, "========================================")
-        Log.d(TAG, "注入予定プロンプト(全文):")
-        Log.d(TAG, prompt)
         Log.d(TAG, "========================================")
 
         setupWebView()
@@ -319,6 +310,7 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         responseStarted = false
         lastTextLength = 0
         stableCount = 0
+        monitoringStartTime = System.currentTimeMillis()
         
         handler.postDelayed({
             monitoringLoop()
@@ -328,11 +320,27 @@ class PerplexityWebViewActivity : AppCompatActivity() {
     private fun monitoringLoop() {
         if (!isMonitoring) return
         
+        // タイムアウトチェック
+        val elapsedTime = System.currentTimeMillis() - monitoringStartTime
+        if (elapsedTime > MONITORING_TIMEOUT) {
+            Log.w(TAG, "★★★ タイムアウト: ${elapsedTime}ms経過 ★★★")
+            isMonitoring = false
+            runOnUiThread {
+                Toast.makeText(
+                    this,
+                    "AI応答がタイムアウトしました。手動で抽出してください。",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            return
+        }
+        
         binding.webView.evaluateJavascript("document.body.innerText") { rawText ->
             val currentText = decodeJsString(rawText)
             val currentLength = currentText.length
-            val totalSentinelCount = countSentinel(currentText, DONE_SENTINEL)
-            val requiredCount = promptSentinelCount + 1
+            
+            // <DATA_END>があれば即座に完了
+            val hasDataEnd = currentText.contains("<DATA_END>")
             
             if (!responseStarted) {
                 if (currentLength > initialPageTextLength + 100) {
@@ -345,16 +353,25 @@ class PerplexityWebViewActivity : AppCompatActivity() {
                 }
             }
             
-            Log.d(TAG, "監視中: Sentinel=$totalSentinelCount/$requiredCount, " +
+            Log.d(TAG, "監視中: <DATA_END>=${if (hasDataEnd) "YES" else "NO"}, " +
                        "長さ=$currentLength, 安定=$stableCount/$REQUIRED_STABLE_COUNT")
             
-            if (totalSentinelCount < requiredCount) {
-                stableCount = 0
-                lastTextLength = currentLength
-                handler.postDelayed({ monitoringLoop() }, MONITORING_INTERVAL)
+            // <DATA_END>があれば即座に完了
+            if (hasDataEnd) {
+                isMonitoring = false
+                Log.d(TAG, "★★★ <DATA_END>検出！即座に取得開始 ★★★")
+                
+                handler.postDelayed({
+                    binding.webView.evaluateJavascript("document.body.innerText") { finalRaw ->
+                        val fullText = decodeJsString(finalRaw)
+                        Log.d(TAG, "抽出完了。パース処理を開始...")
+                        parseAndReturnData(fullText)
+                    }
+                }, 1000)
                 return@evaluateJavascript
             }
             
+            // テキスト長安定化チェック
             if (currentLength != lastTextLength) {
                 stableCount = 0
                 lastTextLength = currentLength
@@ -364,87 +381,19 @@ class PerplexityWebViewActivity : AppCompatActivity() {
             
             if (stableCount >= REQUIRED_STABLE_COUNT) {
                 isMonitoring = false
-                Log.d(TAG, "★★★ 生成完了検出！結果を取得中... ★★★")
+                Log.d(TAG, "★★★ テキスト安定化検出！結果を取得中... ★★★")
                 
                 handler.postDelayed({
                     binding.webView.evaluateJavascript("document.body.innerText") { finalRaw ->
                         val fullText = decodeJsString(finalRaw)
-                        val resultText = extractAiResponse(
-                            fullText, 
-                            promptSentinelCount, 
-                            DONE_SENTINEL
-                        )
                         Log.d(TAG, "抽出完了。パース処理を開始...")
-                        parseAndReturnData(resultText)
+                        parseAndReturnData(fullText)
                     }
                 }, 1500)
             } else {
                 handler.postDelayed({ monitoringLoop() }, MONITORING_INTERVAL)
             }
         }
-    }
-
-    private fun extractAiResponse(
-        fullText: String, 
-        promptSentinelCount: Int, 
-        sentinel: String
-    ): String {
-        Log.d(TAG, "========== extractAiResponse 開始 ==========")
-        Log.d(TAG, "fullText.length=${fullText.length}")
-        Log.d(TAG, "promptSentinelCount=$promptSentinelCount")
-        
-        var pos = 0
-        for (i in 0 until promptSentinelCount) {
-            pos = fullText.indexOf(sentinel, pos)
-            if (pos == -1) {
-                Log.w(TAG, "プロンプト内のSentinelが見つかりません: i=$i")
-                return fullText
-            }
-            pos += sentinel.length
-        }
-        
-        val afterPrompt = if (pos > 0) fullText.substring(pos) else fullText
-        Log.d(TAG, "プロンプトスキップ後の長さ: ${afterPrompt.length}")
-        
-        val aiSentinelPos = afterPrompt.indexOf(sentinel)
-        val extractEndPos = if (aiSentinelPos != -1) {
-            Log.d(TAG, "AI Sentinel検出: pos=$aiSentinelPos")
-            aiSentinelPos
-        } else {
-            val leftBracketPos = afterPrompt.indexOf("⟦")
-            if (leftBracketPos != -1) {
-                Log.w(TAG, "完全なDONE_SENTINELが見つからないが、左カッコ⟦を検出: pos=$leftBracketPos")
-                leftBracketPos
-            } else {
-                Log.w(TAG, "AI Sentinelも左カッコも見つかりません。全文を返します")
-                afterPrompt.length
-            }
-        }
-        
-        val startMarker = "<DATA_START>"
-        val markerPos = afterPrompt.indexOf(startMarker)
-        
-        val extracted = if (markerPos != -1 && markerPos < extractEndPos) {
-            Log.d(TAG, "開始マーカー<DATA_START>を検出: pos=$markerPos")
-            afterPrompt.substring(markerPos, extractEndPos)
-        } else {
-            Log.w(TAG, "開始マーカー未検出。終了位置から最大10000文字を抽出")
-            val extractStart = maxOf(0, extractEndPos - 10000)
-            afterPrompt.substring(extractStart, extractEndPos)
-        }
-        
-        val cleaned = extracted
-            .replace(sentinel, "")
-            .replace("⟦LP_DONE_9F3A2C⟧", "")
-            .replace("⟦", "")
-            .replace("⟧", "")
-            .replace("LP_DONE_9F3A2C", "")
-            .trim()
-        
-        Log.d(TAG, "抽出完了: length=${cleaned.length}")
-        Log.d(TAG, "========== extractAiResponse 終了 ==========")
-        
-        return cleaned
     }
 
     private fun extractData() {
@@ -458,8 +407,7 @@ class PerplexityWebViewActivity : AppCompatActivity() {
                 val decoded = decodeJsString(it)
                 Log.d(TAG, "デコード後のデータ長: ${decoded.length}")
                 
-                val extracted = extractAiResponse(decoded, promptSentinelCount, DONE_SENTINEL)
-                parseAndReturnData(extracted)
+                parseAndReturnData(decoded)
             } ?: run {
                 Log.e(TAG, "evaluateJavascriptがnullを返しました")
             }
@@ -468,6 +416,7 @@ class PerplexityWebViewActivity : AppCompatActivity() {
 
     /**
      * 複数JANコード用のプロンプトを構築
+     * DONE_SENTINELを使用せず、<DATA_END>のみで完了判定
      */
     private fun buildPrompt(janList: List<String>): String {
         val janListStr = janList.joinToString(", ")
@@ -521,7 +470,6 @@ class PerplexityWebViewActivity : AppCompatActivity() {
 JANコードリスト: $janListStr
 
 これらの入力情報を使い、上記と同じ形式でJSON配列を出力してください。
-${DONE_SENTINEL}
         """.trimIndent()
     }
 
@@ -658,19 +606,6 @@ ${DONE_SENTINEL}
         Log.w(TAG, "★★★ finishWithError() 呼び出し ★★★")
         setResult(RESULT_CANCELED)
         finish()
-    }
-
-    private fun countSentinel(text: String, sentinel: String): Int {
-        if (text.isEmpty() || sentinel.isEmpty()) return 0
-        var count = 0
-        var pos = 0
-        while (true) {
-            pos = text.indexOf(sentinel, pos)
-            if (pos == -1) break
-            count++
-            pos += sentinel.length
-        }
-        return count
     }
 
     private fun jsEscape(s: String): String {
