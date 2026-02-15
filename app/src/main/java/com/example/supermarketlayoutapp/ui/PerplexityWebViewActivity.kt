@@ -92,6 +92,7 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         super.onDestroy()
         monitoringRunnable?.let { handler.removeCallbacks(it) }
         isMonitoring = false
+        Log.d(TAG, "onDestroy()呼び出されました")
     }
 
     private fun setupWebView() {
@@ -526,35 +527,64 @@ ${DONE_SENTINEL}
 
     /**
      * 複数商品データをパースして結果を返却
+     * エラーが発生しても必ずfinish()を呼ぶ
      */
     private fun parseAndReturnData(aiResponse: String) {
+        Log.d(TAG, "========== parseAndReturnData 開始 ==========")
+        
         try {
             val jsonString = extractJsonFromAiText(aiResponse)
             if (jsonString != null) {
                 Log.d(TAG, "抽出されたJSON:")
                 Log.d(TAG, jsonString)
                 
-                // JSON配列としてパース
-                val productDataList = json.decodeFromString<List<ProductData>>(jsonString)
-                Log.d(TAG, "JSONパース成功: ${productDataList.size}件")
-                
-                returnResults(productDataList)
+                try {
+                    // JSON配列としてパース
+                    val productDataList = json.decodeFromString<List<ProductData>>(jsonString)
+                    Log.d(TAG, "JSONパース成功: ${productDataList.size}件")
+                    
+                    // メインスレッドで結果を返して終了
+                    runOnUiThread {
+                        returnResults(productDataList)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "JSONパースエラー", e)
+                    runOnUiThread {
+                        Toast.makeText(
+                            this,
+                            "JSONパースエラー: ${e.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        // エラーでも終了
+                        finishWithError()
+                    }
+                }
             } else {
                 Log.e(TAG, "JSON抽出に失敗しました")
-                Toast.makeText(
-                    this,
-                    "JSONデータが見つかりませんでした。手動で再試行してください。",
-                    Toast.LENGTH_LONG
-                ).show()
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        "JSONデータが見つかりませんでした。",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    // エラーでも終了
+                    finishWithError()
+                }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "JSONパースエラー", e)
-            Toast.makeText(
-                this,
-                "JSONパースエラー: ${e.message}",
-                Toast.LENGTH_LONG
-            ).show()
+            Log.e(TAG, "parseAndReturnDataで予期せぬエラー", e)
+            runOnUiThread {
+                Toast.makeText(
+                    this,
+                    "エラー: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+                // エラーでも終了
+                finishWithError()
+            }
         }
+        
+        Log.d(TAG, "========== parseAndReturnData 終了 ==========")
     }
 
     private fun extractJsonFromAiText(text: String): String? {
@@ -585,30 +615,48 @@ ${DONE_SENTINEL}
      * 複数の結果をIntentで返してActivityを終了
      */
     private fun returnResults(dataList: List<ProductData>) {
-        Log.d(TAG, "========== 複数結果返却開始 (${dataList.size}件) ==========")
+        Log.d(TAG, "========== ★★★ returnResults 開始 (${dataList.size}件) ★★★ ==========")
         
-        val resultIntent = Intent()
-        
-        // 配列で返却
-        resultIntent.putExtra("product_count", dataList.size)
-        
-        dataList.forEachIndexed { index, data ->
-            val prefix = "product_$index"
-            resultIntent.putExtra("${prefix}_jan", data.jan)
-            resultIntent.putExtra("${prefix}_maker", data.maker)
-            resultIntent.putExtra("${prefix}_name", data.name)
-            resultIntent.putExtra("${prefix}_category", data.category)
-            resultIntent.putExtra("${prefix}_min_price", data.min_price ?: 0)
-            resultIntent.putExtra("${prefix}_max_price", data.max_price ?: 0)
-            resultIntent.putExtra("${prefix}_width_mm", data.width_cm?.times(10)?.toInt() ?: 0)
-            resultIntent.putExtra("${prefix}_height_mm", data.height_cm?.times(10)?.toInt() ?: 0)
-            resultIntent.putExtra("${prefix}_depth_mm", data.depth_cm?.times(10)?.toInt() ?: 0)
+        try {
+            val resultIntent = Intent()
             
-            Log.d(TAG, "[$index] JAN=${data.jan}, 名称=${data.name}")
+            // 配列で返却
+            resultIntent.putExtra("product_count", dataList.size)
+            
+            dataList.forEachIndexed { index, data ->
+                val prefix = "product_$index"
+                resultIntent.putExtra("${prefix}_jan", data.jan)
+                resultIntent.putExtra("${prefix}_maker", data.maker)
+                resultIntent.putExtra("${prefix}_name", data.name)
+                resultIntent.putExtra("${prefix}_category", data.category)
+                resultIntent.putExtra("${prefix}_min_price", data.min_price ?: 0)
+                resultIntent.putExtra("${prefix}_max_price", data.max_price ?: 0)
+                resultIntent.putExtra("${prefix}_width_mm", data.width_cm?.times(10)?.toInt() ?: 0)
+                resultIntent.putExtra("${prefix}_height_mm", data.height_cm?.times(10)?.toInt() ?: 0)
+                resultIntent.putExtra("${prefix}_depth_mm", data.depth_cm?.times(10)?.toInt() ?: 0)
+                
+                Log.d(TAG, "[$index] JAN=${data.jan}, 名称=${data.name}")
+            }
+            
+            Log.d(TAG, "★ setResult(RESULT_OK) 呼び出し")
+            setResult(RESULT_OK, resultIntent)
+            
+            Log.d(TAG, "★ finish() 呼び出し")
+            finish()
+            
+            Log.d(TAG, "========== ★★★ returnResults 終了 ★★★ ==========")
+        } catch (e: Exception) {
+            Log.e(TAG, "returnResultsでエラー発生", e)
+            finishWithError()
         }
-        
-        Log.d(TAG, "onResultReceived呼び出し完了")
-        setResult(RESULT_OK, resultIntent)
+    }
+    
+    /**
+     * エラー時の終了処理
+     */
+    private fun finishWithError() {
+        Log.w(TAG, "★★★ finishWithError() 呼び出し ★★★")
+        setResult(RESULT_CANCELED)
         finish()
     }
 
