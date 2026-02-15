@@ -1,105 +1,94 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.card.MaterialCardView 
+<com.google.android.material.card.MaterialCardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/cardView"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="4dp"
-    app:cardCornerRadius="8dp"
-    app:cardElevation="2dp">
+    android:layout_margin="8dp"
+    app:cardElevation="2dp"
+    app:cardCornerRadius="8dp">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="12dp">
+        android:padding="16dp">
 
-        <!-- 商品名 -->
         <TextView
             android:id="@+id/tvProductName"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:textSize="16sp"
+            android:text="商品名"
+            android:textSize="18sp"
             android:textStyle="bold"
-            android:textColor="#000000"
+            android:textColor="@android:color/black"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toStartOf="@id/btnDelete"
-            tools:text="コカ・コーラ 500ml" />
-
-        <!-- 削除ボタン -->
-        <ImageButton
-            android:id="@+id/btnDelete"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/ic_menu_delete"
-            android:contentDescription="削除"
-            app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
 
-        <!-- JANコード -->
         <TextView
-            android:id="@+id/tvJanCode"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textSize="12sp"
-            android:textColor="#757575"
-            app:layout_constraintTop_toBottomOf="@id/tvProductName"
-            app:layout_constraintStart_toStartOf="parent"
-            tools:text="JAN: 4902102072557" />
-
-        <!-- メーカー -->
-        <TextView
-            android:id="@+id/tvMaker"
+            android:id="@+id/tvProductJan"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:text="JAN: 1234567890123"
+            android:textSize="14sp"
+            android:textColor="@android:color/darker_gray"
             android:layout_marginTop="4dp"
-            android:textSize="14sp"
-            android:textColor="#424242"
-            app:layout_constraintTop_toBottomOf="@id/tvJanCode"
+            app:layout_constraintTop_toBottomOf="@id/tvProductName"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toStartOf="@id/tvCategory"
-            tools:text="メーカー: コカ・コーラ" />
+            app:layout_constraintEnd_toEndOf="parent" />
 
-        <!-- カテゴリ -->
         <TextView
-            android:id="@+id/tvCategory"
-            android:layout_width="wrap_content"
+            android:id="@+id/tvProductDetails"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:textSize="14sp"
-            android:textColor="#424242"
-            app:layout_constraintTop_toTopOf="@id/tvMaker"
+            android:text="メーカー: 株式会社〇〇 | カテゴリ: 飲料 | 価格: 100~150円"
+            android:textSize="12sp"
+            android:textColor="@android:color/darker_gray"
+            android:layout_marginTop="4dp"
+            app:layout_constraintTop_toBottomOf="@id/tvProductJan"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <TextView
+            android:id="@+id/tvProductSize"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="サイズ: 5.5x18.0x5.5 cm"
+            android:textSize="12sp"
+            android:textColor="@android:color/darker_gray"
+            android:layout_marginTop="4dp"
+            app:layout_constraintTop_toBottomOf="@id/tvProductDetails"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <LinearLayout
+            android:id="@+id/buttonLayout"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="12dp"
+            app:layout_constraintTop_toBottomOf="@id/tvProductSize"
+            app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
-            tools:text="カテゴリ: 清涼飲料" />
+            app:layout_constraintBottom_toBottomOf="parent">
 
-        <!-- 価格範囲 -->
-        <TextView
-            android:id="@+id/tvPriceRange"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:textSize="14sp"
-            android:textColor="#2196F3"
-            android:textStyle="bold"
-            app:layout_constraintTop_toBottomOf="@id/tvMaker"
-            app:layout_constraintStart_toStartOf="parent"
-            tools:text="¥98 ~ ¥128" />
+            <Button
+                android:id="@+id/btnEdit"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="編集"
+                android:layout_marginEnd="8dp"
+                style="@style/Widget.Material3.Button.OutlinedButton" />
 
-        <!-- サイズ -->
-        <TextView
-            android:id="@+id/tvSize"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
-            android:textSize="14sp"
-            android:textColor="#757575"
-            app:layout_constraintTop_toTopOf="@id/tvPriceRange"
-            app:layout_constraintStart_toEndOf="@id/tvPriceRange"
-            tools:text="📏 5.5 x 18.0 x 5.5 cm" />
+            <Button
+                android:id="@+id/btnDelete"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="削除"
+                style="@style/Widget.Material3.Button.OutlinedButton" />
+        </LinearLayout>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
