@@ -31,6 +31,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 
     compileOptions {
@@ -52,6 +53,9 @@ dependencies {
 
     // Kotlinx Serialization (JSON解析)
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+
+    // OkHttp (HTTPクライアント)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // WebView用
     implementation("androidx.webkit:webkit:1.12.1")
