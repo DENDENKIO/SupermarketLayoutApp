@@ -219,22 +219,22 @@ class LocationManagerActivity : AppCompatActivity() {
 
         override fun getItemCount(): Int = locations.size
 
-        inner class ViewHolder(private val binding: ItemLocationBinding) :
-            RecyclerView.ViewHolder(binding.root) {
+        inner class ViewHolder(private val itemBinding: ItemLocationBinding) :
+            RecyclerView.ViewHolder(itemBinding.root) {
 
             fun bind(location: LocationEntity) {
-                binding.tvLocationName.text = location.name
-                binding.tvLocationDetails.text = "幅: ${location.shelfWidth}cm | 高さ: ${location.shelfHeight}cm | 段数: ${location.shelfLevels}"
+                itemBinding.tvLocationName.text = location.name
+                itemBinding.tvLocationDetails.text = "幅: ${location.shelfWidth}cm | 高さ: ${location.shelfHeight}cm | 段数: ${location.shelfLevels}"
 
-                binding.root.setOnClickListener {
+                itemBinding.root.setOnClickListener {
                     onItemClick(location)
                 }
 
-                binding.btnEdit.setOnClickListener {
+                itemBinding.btnEdit.setOnClickListener {
                     onEditClick(location)
                 }
 
-                binding.btnDelete.setOnClickListener {
+                itemBinding.btnDelete.setOnClickListener {
                     onDeleteClick(location)
                 }
             }
