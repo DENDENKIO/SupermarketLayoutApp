@@ -21,6 +21,7 @@ class PerplexityWebViewActivity : AppCompatActivity() {
     private val json = Json { ignoreUnknownKeys = true }
     private val handler = Handler(Looper.getMainLooper())
     private var promptInjected = false
+    private var injectionAttempts = 0
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -39,14 +40,12 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         binding.webView.apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            // LanguagePracticeAPPを参考にUserAgentを設定
             settings.userAgentString = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     Log.d("WebView", "Page finished: $url")
-                    // 自動注入の試行
                     if (url?.contains("perplexity.ai") == true && !promptInjected) {
                         schedulePromptInjection()
                     }
@@ -56,7 +55,7 @@ class PerplexityWebViewActivity : AppCompatActivity() {
             webChromeClient = object : WebChromeClient() {
                 override fun onConsoleMessage(message: ConsoleMessage?): Boolean {
                     message?.let {
-                        Log.d("WebView", "${it.message()}")
+                        Log.d("WebView-Console", "${it.message()} (${it.sourceId()}:${it.lineNumber()})")
                     }
                     return true
                 }
@@ -79,46 +78,114 @@ class PerplexityWebViewActivity : AppCompatActivity() {
     }
 
     private fun schedulePromptInjection() {
-        handler.postDelayed({ injectPrompt() }, 3000)
+        // タイミングを延長し、リトライロジックを追加
+        handler.postDelayed({ attemptInjectionWithRetry() }, 4000)
+    }
+
+    private fun attemptInjectionWithRetry() {
+        if (promptInjected || injectionAttempts >= 5) {
+            if (!promptInjected) {
+                Toast.makeText(this, "自動注入失敗。手動ボタンをお試しください", Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+        injectionAttempts++
+        Log.d("WebView", "Injection attempt #$injectionAttempts")
+        injectPrompt()
+        
+        // 失敗時は2秒後に再試行
+        handler.postDelayed({ 
+            if (!promptInjected) attemptInjectionWithRetry() 
+        }, 2000)
     }
 
     private fun injectPrompt() {
         val prompt = buildPrompt(janCode)
         val safePrompt = jsEscape(prompt)
         
-        // LanguagePracticeAPPのロジックを参考にした注入スクリプト
+        // 改善版の注入スクリプト（複数の手法を組み合わせ）
         val script = """
             (function() {
+                console.log('[Injection] Starting prompt injection...');
                 var prompt = "$safePrompt";
-                var input = document.querySelector('#ask-input[contenteditable="true"]') ||
-                            document.querySelector('textarea') ||
-                            document.querySelector('div[contenteditable="true"][role="textbox"]');
                 
-                if (!input) return 'INPUT_NOT_FOUND';
+                // 複数のセレクタパターンを試行
+                var selectors = [
+                    'textarea[placeholder*="Ask"]',
+                    'textarea[placeholder*="質問"]',
+                    'div[contenteditable="true"][role="textbox"]',
+                    'div[contenteditable="true"]',
+                    'textarea',
+                    '[data-testid="search-input"]',
+                    '[data-testid="ask-input"]',
+                    'input[type="text"]'
+                ];
                 
-                input.focus();
-                
-                // 既存のコンテンツをクリアして入力
-                try {
-                    if (input.contentEditable === 'true') {
-                        input.innerText = prompt;
-                    } else {
-                        input.value = prompt;
+                var input = null;
+                for (var i = 0; i < selectors.length; i++) {
+                    input = document.querySelector(selectors[i]);
+                    if (input) {
+                        console.log('[Injection] Found input with selector: ' + selectors[i]);
+                        break;
                     }
+                }
+                
+                if (!input) {
+                    console.error('[Injection] INPUT_NOT_FOUND');
+                    return 'INPUT_NOT_FOUND';
+                }
+                
+                // フォーカスを当てる
+                input.focus();
+                console.log('[Injection] Input focused');
+                
+                // 方法1: contentEditable要素への直接代入
+                if (input.contentEditable === 'true') {
+                    input.innerText = prompt;
+                    input.textContent = prompt;
+                    console.log('[Injection] Set via innerText/textContent');
+                } 
+                // 方法2: textarea/inputへのvalue設定
+                else if (input.tagName === 'TEXTAREA' || input.tagName === 'INPUT') {
+                    input.value = prompt;
+                    console.log('[Injection] Set via value');
+                }
+                
+                // イベントディスパッチ（複数種類）
+                try {
                     input.dispatchEvent(new Event('input', { bubbles: true }));
-                } catch(e) {}
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+                    input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+                    console.log('[Injection] Events dispatched');
+                } catch(e) {
+                    console.error('[Injection] Event dispatch error:', e);
+                }
                 
                 // 送信ボタンの自動クリック
                 setTimeout(function() {
-                    var sendBtn = document.querySelector('button[aria-label="送信"]') ||
-                                 document.querySelector('button[aria-label*="Send"]') ||
-                                 document.querySelector('button[type="submit"]');
-                    if (sendBtn) {
-                        sendBtn.click();
-                        return 'SENT';
+                    var btnSelectors = [
+                        'button[aria-label*="送信"]',
+                        'button[aria-label*="Send"]',
+                        'button[aria-label*="Submit"]',
+                        'button[type="submit"]',
+                        'button svg[data-icon="arrow-up"]',
+                        'button:has(svg)'
+                    ];
+                    
+                    var sendBtn = null;
+                    for (var i = 0; i < btnSelectors.length; i++) {
+                        sendBtn = document.querySelector(btnSelectors[i]);
+                        if (sendBtn && !sendBtn.disabled) {
+                            console.log('[Injection] Found send button with: ' + btnSelectors[i]);
+                            sendBtn.click();
+                            console.log('[Injection] SENT');
+                            return 'SENT';
+                        }
                     }
+                    console.log('[Injection] Send button not found or disabled');
                     return 'INPUT_SET';
-                }, 1000);
+                }, 1500);
                 
                 return 'PROCESSING';
             })();
@@ -126,11 +193,27 @@ class PerplexityWebViewActivity : AppCompatActivity() {
 
         binding.webView.evaluateJavascript(script) { result ->
             Log.d("WebView", "Injection result: $result")
-            if (result != null && result.contains("INPUT_SET") || result?.contains("SENT") == true) {
-                promptInjected = true
-                Toast.makeText(this, "プロンプトを注入しました", Toast.LENGTH_SHORT).show()
-                // 自動抽出の監視開始
-                startAutoMonitoring()
+            
+            when {
+                result?.contains("INPUT_NOT_FOUND") == true -> {
+                    Log.w("WebView", "Input element not found. Will retry...")
+                }
+                result?.contains("INPUT_SET") == true || result?.contains("SENT") == true -> {
+                    promptInjected = true
+                    Toast.makeText(this, "プロンプトを注入しました", Toast.LENGTH_SHORT).show()
+                    startAutoMonitoring()
+                }
+                result?.contains("PROCESSING") == true -> {
+                    Log.d("WebView", "Injection processing...")
+                    // PROCESSINGの場合も成功とみなす（送信ボタンは後で押される）
+                    handler.postDelayed({
+                        if (!promptInjected) {
+                            promptInjected = true
+                            Toast.makeText(this, "プロンプトを設定しました", Toast.LENGTH_SHORT).show()
+                            startAutoMonitoring()
+                        }
+                    }, 2000)
+                }
             }
         }
     }
@@ -139,10 +222,14 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         handler.postDelayed(object : Runnable {
             var attempts = 0
             override fun run() {
-                if (attempts > 30) return // 最大1分間監視
+                if (attempts > 30) {
+                    Log.w("WebView", "Auto-monitoring timeout after 30 attempts")
+                    return
+                }
                 
                 binding.webView.evaluateJavascript("(function() { return document.body.innerText; })();") { result ->
                     if (result != null && result.contains("<DATA_START>") && result.contains("<DATA_END>")) {
+                        Log.d("WebView", "Data markers found! Extracting...")
                         extractData()
                     } else {
                         attempts++
@@ -201,8 +288,11 @@ JAN: $jan
         try {
             val jsonString = extractJsonFromAiText(htmlContent)
             if (jsonString != null) {
+                Log.d("WebView", "Extracted JSON: $jsonString")
                 val productData = json.decodeFromString<ProductData>(jsonString)
                 returnResult(productData)
+            } else {
+                Log.e("WebView", "Failed to extract JSON from content")
             }
         } catch (e: Exception) {
             Log.e("PerplexityWebView", "JSON parse error", e)
