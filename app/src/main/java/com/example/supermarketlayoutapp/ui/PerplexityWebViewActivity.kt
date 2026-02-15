@@ -538,40 +538,41 @@ JANコードリスト: $janListStr
         Log.d(TAG, "========== parseAndReturnData 終了 ==========")
     }
 
+    /**
+     * AIテキストからJSONを抽出
+     * HTMLエスケープされたマーカーにも対応
+     */
     private fun extractJsonFromAiText(text: String): String? {
         Log.d(TAG, "========== extractJsonFromAiText 開始 ==========")
+        
+        // HTMLエスケープを正規化
+        val normalizedText = text
+            .replace("\\u003C", "<")
+            .replace("\\u003E", ">")
         
         val startMarker = "<DATA_START>"
         val endMarker = "<DATA_END>"
         
         // マーカーの存在を検索
-        val hasStart = text.contains(startMarker)
-        val hasEnd = text.contains(endMarker)
+        val hasStart = normalizedText.contains(startMarker)
+        val hasEnd = normalizedText.contains(endMarker)
         
         Log.d(TAG, "<DATA_START>検出: $hasStart")
         Log.d(TAG, "<DATA_END>検出: $hasEnd")
         
         if (!hasStart) {
             Log.w(TAG, "<DATA_START>マーカーが見つかりません")
-            // 部分一致を検索
-            if (text.contains("DATA_START")) {
-                Log.w(TAG, "DATA_STARTはあるが<>がない")
-            }
             return null
         }
         
-        val lastStart = text.lastIndexOf(startMarker)
+        val lastStart = normalizedText.lastIndexOf(startMarker)
         
         if (!hasEnd) {
             Log.w(TAG, "<DATA_END>マーカーが見つかりません")
-            // 部分一致を検索
-            if (text.contains("DATA_END")) {
-                Log.w(TAG, "DATA_ENDはあるが<>がない")
-            }
             return null
         }
         
-        val lastEnd = text.indexOf(endMarker, lastStart)
+        val lastEnd = normalizedText.indexOf(endMarker, lastStart)
         if (lastEnd == -1) {
             Log.w(TAG, "<DATA_END>マーカーが<DATA_START>の後に見つかりません")
             return null
@@ -579,7 +580,7 @@ JANコードリスト: $janListStr
         
         Log.d(TAG, "<DATA_START> 位置: $lastStart, <DATA_END> 位置: $lastEnd")
         
-        val extracted = text.substring(lastStart + startMarker.length, lastEnd).trim()
+        val extracted = normalizedText.substring(lastStart + startMarker.length, lastEnd).trim()
         Log.d(TAG, "抽出されたテキスト長: ${extracted.length}")
         
         if (extracted.isEmpty()) {
