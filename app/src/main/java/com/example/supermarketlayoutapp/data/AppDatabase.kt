@@ -18,7 +18,7 @@ import com.example.supermarketlayoutapp.data.entity.*
         LocationEntity::class,
         DisplayProductEntity::class
     ],
-    version = 3,  // バージョンを3にアップ
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -40,19 +40,23 @@ abstract class AppDatabase : RoomDatabase() {
          */
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(database: SupportSQLiteDatabase) {
-                // fixtureテーブルに新しいカラムを追加
-                database.execSQL(
-                    "ALTER TABLE fixture ADD COLUMN position_x REAL NOT NULL DEFAULT 0.0"
-                )
-                database.execSQL(
-                    "ALTER TABLE fixture ADD COLUMN position_y REAL NOT NULL DEFAULT 0.0"
-                )
-                database.execSQL(
-                    "ALTER TABLE fixture ADD COLUMN rotation REAL NOT NULL DEFAULT 0.0"
-                )
-                database.execSQL(
-                    "ALTER TABLE fixture ADD COLUMN color INTEGER NOT NULL DEFAULT -12627531"  // 0xFF3F51B5 = -12627531
-                )
+                try {
+                    // fixtureテーブルに新しいカラムを追加
+                    database.execSQL(
+                        "ALTER TABLE fixture ADD COLUMN position_x REAL NOT NULL DEFAULT 0.0"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE fixture ADD COLUMN position_y REAL NOT NULL DEFAULT 0.0"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE fixture ADD COLUMN rotation REAL NOT NULL DEFAULT 0.0"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE fixture ADD COLUMN color INTEGER NOT NULL DEFAULT -12627531"
+                    )
+                } catch (e: Exception) {
+                    // カラムがすでに存在する場合はスキップ
+                }
             }
         }
         
@@ -62,46 +66,50 @@ abstract class AppDatabase : RoomDatabase() {
          */
         private val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(database: SupportSQLiteDatabase) {
-                // locationテーブルを作成
-                database.execSQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS location (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                        name TEXT NOT NULL,
-                        shelf_width REAL NOT NULL,
-                        shelf_height REAL NOT NULL,
-                        shelf_levels INTEGER NOT NULL,
-                        created_at INTEGER NOT NULL
+                try {
+                    // locationテーブルを作成
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS location (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            name TEXT NOT NULL,
+                            shelf_width REAL NOT NULL,
+                            shelf_height REAL NOT NULL,
+                            shelf_levels INTEGER NOT NULL,
+                            created_at INTEGER NOT NULL
+                        )
+                        """.trimIndent()
                     )
-                    """.trimIndent()
-                )
-                
-                // display_productテーブルを作成
-                database.execSQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS display_product (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                        location_id INTEGER NOT NULL,
-                        product_id INTEGER NOT NULL,
-                        quantity INTEGER NOT NULL,
-                        facings INTEGER NOT NULL,
-                        level INTEGER,
-                        position_x REAL,
-                        position_y REAL,
-                        created_at INTEGER NOT NULL,
-                        FOREIGN KEY(location_id) REFERENCES location(id) ON DELETE CASCADE,
-                        FOREIGN KEY(product_id) REFERENCES product(id) ON DELETE CASCADE
+                    
+                    // display_productテーブルを作成
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS display_product (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            location_id INTEGER NOT NULL,
+                            product_id INTEGER NOT NULL,
+                            quantity INTEGER NOT NULL,
+                            facings INTEGER NOT NULL,
+                            level INTEGER,
+                            position_x REAL,
+                            position_y REAL,
+                            created_at INTEGER NOT NULL,
+                            FOREIGN KEY(location_id) REFERENCES location(id) ON DELETE CASCADE,
+                            FOREIGN KEY(product_id) REFERENCES product(id) ON DELETE CASCADE
+                        )
+                        """.trimIndent()
                     )
-                    """.trimIndent()
-                )
-                
-                // インデックスを作成
-                database.execSQL(
-                    "CREATE INDEX IF NOT EXISTS index_display_product_location_id ON display_product(location_id)"
-                )
-                database.execSQL(
-                    "CREATE INDEX IF NOT EXISTS index_display_product_product_id ON display_product(product_id)"
-                )
+                    
+                    // インデックスを作成
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_display_product_location_id ON display_product(location_id)"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_display_product_product_id ON display_product(product_id)"
+                    )
+                } catch (e: Exception) {
+                    // テーブルがすでに存在する場合はスキップ
+                }
             }
         }
         
@@ -112,8 +120,8 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "supermarket_layout_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)  // マイグレーションを追加
-                    .fallbackToDestructiveMigration()  // マイグレーション失敗時は再作成
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .fallbackToDestructiveMigration()  // マイグレーション失敗時はデータベースを再作成
                     .build()
                 INSTANCE = instance
                 instance
