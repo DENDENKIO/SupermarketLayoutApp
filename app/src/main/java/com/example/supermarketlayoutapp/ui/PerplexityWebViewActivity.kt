@@ -18,6 +18,7 @@ import android.util.Log
  * 
  * AIへのプロンプト自動注入、応答監視、JSONデータ抽出を実装。
  * **複数JANコードを一括処理**し、速度を大幅に向上。
+ * **2段階プロンプト：情報取得→JSON生成**を自動化。
  */
 class PerplexityWebViewActivity : AppCompatActivity() {
 
@@ -34,7 +35,14 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         FAILED
     }
     
+    // 2段階プロセス管理
+    private enum class ProcessStage {
+        STAGE1_INFO_RETRIEVAL,  // 第1段階: 情報取得
+        STAGE2_JSON_GENERATION  // 第2段階: JSON生成
+    }
+    
     private var injectionState = InjectionState.NOT_STARTED
+    private var currentStage = ProcessStage.STAGE1_INFO_RETRIEVAL
     private var injectionAttempts = 0
     private val MAX_INJECTION_ATTEMPTS = 5
     
@@ -54,7 +62,8 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         private const val SEND_BUTTON_DELAY = 500L
         private const val MONITORING_INTERVAL = 1500L
         private const val REQUIRED_STABLE_COUNT = 5  // 7.5秒間安定
-        private const val MONITORING_TIMEOUT = 60000L  // 60秒でタイムアウト
+        private const val MONITORING_TIMEOUT = 120000L  // 120秒でタイムアウト
+        private const val STAGE2_DELAY = 3000L  // 第2段階の待機時間
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -192,10 +201,14 @@ class PerplexityWebViewActivity : AppCompatActivity() {
         
         injectionState = InjectionState.INJECTING
         
-        val prompt = buildPrompt(janCodeList)
+        val prompt = when (currentStage) {
+            ProcessStage.STAGE1_INFO_RETRIEVAL -> buildStage1Prompt(janCodeList)
+            ProcessStage.STAGE2_JSON_GENERATION -> buildStage2Prompt()
+        }
+        
         val safePrompt = jsEscape(prompt)
         
-        Log.d(TAG, "★★★ プロンプト注入開始 ★★★")
+        Log.d(TAG, "★★★ プロンプト注入開始 [第${if (currentStage == ProcessStage.STAGE1_INFO_RETRIEVAL) 1 else 2}段階] ★★★")
         Log.d(TAG, "実際に送信するプロンプト(最初500文字):")
         Log.d(TAG, prompt.take(500))
         
@@ -212,7 +225,7 @@ class PerplexityWebViewActivity : AppCompatActivity() {
                 result?.contains("INPUT_SET") == true || result?.contains("SENT") == true -> {
                     injectionState = InjectionState.COMPLETED
                     Log.d(TAG, "★ プロンプト注入成功! ★")
-                    Toast.makeText(this, "プロンプトを注入しました", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "第${if (currentStage == ProcessStage.STAGE1_INFO_RETRIEVAL) 1 else 2}段階のプロンプトを注入しました", Toast.LENGTH_SHORT).show()
                     startAutoMonitoring()
                 }
                 result?.contains("PROCESSING") == true -> {
@@ -221,7 +234,7 @@ class PerplexityWebViewActivity : AppCompatActivity() {
                         if (injectionState == InjectionState.INJECTING) {
                             injectionState = InjectionState.COMPLETED
                             Log.d(TAG, "★ プロンプト設定完了 ★")
-                            Toast.makeText(this, "プロンプトを設定しました", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, "第${if (currentStage == ProcessStage.STAGE1_INFO_RETRIEVAL) 1 else 2}段階のプロンプトを設定しました", Toast.LENGTH_SHORT).show()
                             startAutoMonitoring()
                         }
                     }, 2000)
@@ -379,15 +392,32 @@ class PerplexityWebViewActivity : AppCompatActivity() {
             
             if (stableCount >= REQUIRED_STABLE_COUNT) {
                 isMonitoring = false
-                Log.d(TAG, "★★★ テキスト安定化検出！結果を取得中... ★★★")
+                Log.d(TAG, "★★★ テキスト安定化検出！第${if (currentStage == ProcessStage.STAGE1_INFO_RETRIEVAL) 1 else 2}段階完了 ★★★")
                 
-                handler.postDelayed({
-                    binding.webView.evaluateJavascript("document.body.innerText") { finalRaw ->
-                        val fullText = decodeJsString(finalRaw)
-                        Log.d(TAG, "抽出完了。パース処理を開始...")
-                        parseAndReturnData(fullText)
+                if (currentStage == ProcessStage.STAGE1_INFO_RETRIEVAL) {
+                    // 第1段階完了→第2段階へ
+                    Log.d(TAG, "★★★ 第1段階完了！${STAGE2_DELAY}ms後に第2段階（JSON生成）へ ★★★")
+                    runOnUiThread {
+                        Toast.makeText(this, "商品情報取得完了。JSON化を開始します...", Toast.LENGTH_SHORT).show()
                     }
-                }, 1500)
+                    
+                    handler.postDelayed({
+                        currentStage = ProcessStage.STAGE2_JSON_GENERATION
+                        injectionState = InjectionState.NOT_STARTED
+                        injectionAttempts = 0
+                        initialPageTextLength = currentLength
+                        injectPrompt()
+                    }, STAGE2_DELAY)
+                } else {
+                    // 第2段階完了→データ抽出
+                    handler.postDelayed({
+                        binding.webView.evaluateJavascript("document.body.innerText") { finalRaw ->
+                            val fullText = decodeJsString(finalRaw)
+                            Log.d(TAG, "抽出完了。パース処理を開始...")
+                            parseAndReturnData(fullText)
+                        }
+                    }, 1500)
+                }
             } else {
                 handler.postDelayed({ monitoringLoop() }, MONITORING_INTERVAL)
             }
@@ -413,42 +443,41 @@ class PerplexityWebViewActivity : AppCompatActivity() {
     }
 
     /**
-     * 複数JANコード用のプロンプトを構築（2段階プロセス）
+     * 第1段階: 商品情報取得プロンプト
      */
-    private fun buildPrompt(janList: List<String>): String {
+    private fun buildStage1Prompt(janList: List<String>): String {
         val janListStr = janList.joinToString(", ")
         
         return """
-あなたはスーパーマーケット向け棚割システムのための商品マスターJSONを作成します。
-以下の2段階で作業を進めてください。
-
-# 第1段階: 全商品情報の取得
-まず、以下の全JANコードの商品情報をインターネット検索で取得してください：
+以下の全JANコードの商品情報をインターネット検索で取得してください。
 
 JANコードリスト: $janListStr
 
-## 情報取得の条件：
-1. インターネット検索で各商品の正確な情報を取得してください
-2. メーカー公式サイト、Amazon、楽天、ECサイト、商品データベースなど、信頼できる情報源を利用してください
-3. **特に商品サイズ（幅・高さ・奥行）はcm単位で正確に取得してください**
-4. **サイズが不明な場合や見つからない場合は、類似商品のサイズを参考に推定してください**
-5. 例：ペットボトル500mlは幅約6-7cm、高さ20-21cm、奥行6-7cm
-6. 例：缶コーヒー190gは幅約5.3cm、高さ11cm、奥行5.3cm
-7. 例：カップ麵は幅約10-11cm、高さ10-12cm、奥行10-11cm
-8. **全商品について必ずサイズを設定してください**（不明NG）
+取得する情報：
+1. メーカー公式サイト、Amazon、楽天、ECサイト、商品データベースなど、信頼できる情報源を利用してください
+2. **特に商品サイズ（幅・高さ・奥行）はcm単位で正確に取得してください**
+3. **サイズが不明な場合や見つからない場合は、類似商品のサイズを参考に推定してください**
+4. 例：ペットボトル500mlは幅約6-7cm、高さ20-21cm、奥行6-7cm
+5. 例：缶コーヒー190gは幅約5.3cm、高さ11cm、奥行5.3cm
+6. 例：カップ麵は幅約10-11cm、高さ10-12cm、奥行10-11cm
+7. **全商品について必ずサイズを設定してください**（不明NG）
 
-まず、上記の全商品情報を取得して、表形式でまとめてください。
+取得した情報を表形式でまとめて表示してください。
+        """.trimIndent()
+    }
 
----
+    /**
+     * 第2段階: JSON生成プロンプト
+     */
+    private fun buildStage2Prompt(): String {
+        return """
+上記で取得した全商品情報を、以下の形式でJSON配列で出力してください。
 
-# 第2段階: JSON形式で出力
-第1段階で取得した情報をもとに、以下の形式でJSONを出力してください。
-
-## 出力形式
+出力形式：
 - 「<DATA_START>」の行から「<DATA_END>」の行までの間に、**JSON配列**を出力してください。
 - **説明・補足・会話文など、JSON以外のテキストは絶対に出力しないでください。**
 
-## JSONスキーマ (配列形式)
+JSONスキーマ (配列形式)：
 <DATA_START>
 [
   {
@@ -465,16 +494,14 @@ JANコードリスト: $janListStr
 ]
 <DATA_END>
 
-## ルール
+ルール：
 - 必ず**JSON配列**で出力し、入力JANコードごとに1つのオブジェクトを作成すること。
 - 数値項目は数値型で出力し、単位はすべてcmとする。
-- **サイズが不明な場合でも、第1段階で推定した値を使用してください。**
-- どうしても推定できない場合のみ null を入れる。
 - 価格が不明な場合は min_price, max_price に null を入れる。
 - 上のスキーマとキー名は絶対に変更しないこと。
-- JANコードが見つからない場合でも、そのJANのオブジェクトを配列に含め、nameを"不明"としてください。
+- JANコードが見つからない場合でも、そのJANのオブジェクトを配列に含め、nameを「不明」としてください。
 
-上記の形式で、第1段階で取得した情報をもとにJSON配列を出力してください。
+上記の形式でJSON配列を出力してください。
         """.trimIndent()
     }
 
