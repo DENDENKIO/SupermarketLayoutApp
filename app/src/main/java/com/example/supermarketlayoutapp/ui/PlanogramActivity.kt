@@ -213,12 +213,12 @@ class PlanogramActivity : AppCompatActivity() {
             binding.btnGeneratePlanogram.text = "AI生成中..."
             
             try {
-                // 第1段階: 商品情報を取得
+                // 第1段階: 全商品情報を取得
                 Toast.makeText(this@PlanogramActivity, "商品情報を取得中...", Toast.LENGTH_SHORT).show()
                 val productInfoPrompt = buildProductInfoPrompt(displayProducts)
                 val productInfoResponse = callPerplexityAPI(productInfoPrompt)
                 
-                // 第2段階: 棚割りを生成
+                // 第2段階: JSON形式で棚割りを生成
                 Toast.makeText(this@PlanogramActivity, "棚割りを生成中...", Toast.LENGTH_SHORT).show()
                 val planogramPrompt = buildPlanogramPrompt(
                     location.shelfWidth, 
@@ -228,7 +228,7 @@ class PlanogramActivity : AppCompatActivity() {
                 )
                 val planogramResponse = callPerplexityAPI(planogramPrompt)
                 
-                // AIのレスポンスをパースして棚割りを更新
+                // JSON部分のみを抽出してパース
                 parsePlanogramResponse(planogramResponse, displayProducts)
                 
                 loadDisplayProducts()
@@ -243,7 +243,7 @@ class PlanogramActivity : AppCompatActivity() {
     }
 
     /**
-     * 第1段階: 商品情報取得プロンプト
+     * 第1段階: 全商品情報取得プロンプト
      */
     private fun buildProductInfoPrompt(displayProducts: List<DisplayProductWithProduct>): String {
         val productList = displayProducts.joinToString("\n") { dp ->
@@ -255,27 +255,32 @@ class PlanogramActivity : AppCompatActivity() {
         }
         
         return """
-以下の商品リストの各商品について、実際の商品サイズ（幅・高さ・奥行）を調査してください。
+以下の全商品の詳細なサイズ情報（幅・高さ・奥行）を調査して、表形式で回答してください。
 
 商品リスト：
 $productList
 
 条件：
-1. 各商品の正確なサイズ（幅・高さ・奥行をcm単位）を調査してください
-2. サイズが不明な場合は、類似商品のサイズを参考にして推定してください
+1. 各商品の正確なサイズ（幅・高さ・奥行をcm単位）をインターネット検索で調査してください
+2. サイズが不明な場合や見つからない場合は、**類似商品のサイズを参考に推定**してください
 3. 例：ペットボトル500mlは通常、幅約6-7cm、高さ20-21cm、奥行6-7cm
 4. 例：缶コーヒー190gは通常、幅約5.3cm、高さ11cm、奥行5.3cm
+5. 例：カップ麵は通常、幅約10-11cm、高さ10-12cm、奥行10-11cm
+6. **全商品について必ずサイズを設定してください**（不明NG）
 
-以下の形式で回答してください：
+回答形式（表形式）：
 
-商品名: 幅Xcm, 高さYcm, 奥行Zcm
-商品名: 幅Xcm, 高さYcm, 奥行Zcm
-...
+| 商品名 | 幅(cm) | 高さ(cm) | 奥行(cm) | 数量 |
+|---------|--------|----------|----------|------|
+| 商品A | 6.5 | 20.0 | 6.5 | 10 |
+| 商品B | 5.0 | 18.5 | 5.0 | 8 |
+
+この形式で全商品の情報を表にまとめてください。
         """.trimIndent()
     }
 
     /**
-     * 第2段階: 棚割り生成プロンプト
+     * 第2段階: JSON形式で棚割り生成プロンプト
      */
     private fun buildPlanogramPrompt(
         shelfWidth: Float,
@@ -284,14 +289,14 @@ $productList
         productInfo: String
     ): String {
         return """
-以下の商品情報をもとに、棚に商品を配置する棚割り（プラノグラム）を考えてください。
+先ほど取得した以下の商品情報をもとに、棚に商品を配置する棚割り（プラノグラム）をJSON形式で出力してください。
 
 棚のサイズ：
 - 幅: ${shelfWidth}cm
 - 高さ: ${shelfHeight}cm
 - 段数: $shelfLevels
 
-商品情報：
+先ほど取得した商品情報：
 $productInfo
 
 配置ルール：
@@ -301,7 +306,9 @@ $productInfo
 4. 棚の幅を超えないようにしてください
 5. 同じ段に複数商品を並べる場合は、position_xを調整して重ならないようにしてください
 
-必ずJSON形式で各商品の配置を返してください：
+**重要**: 必ず以下のJSON形式のみを出力し、他の説明やテキストは一切含めないでください。
+
+JSON形式：
 {
   "placements": [
     {
@@ -316,6 +323,8 @@ $productInfo
 levelは0が一番上、下にいくほど数値が大きくなります。
 position_xは左端からの距離(cm)です。
 facingsは横に並べる数です。
+
+上記のJSONのみを出力してください。
         """.trimIndent()
     }
 
@@ -366,14 +375,14 @@ facingsは横に並べる数です。
     }
 
     /**
-     * AIレスポンスをパースして棚割りを更新
+     * AIレスポンスからJSON部分のみを抽出してパース
      */
     private suspend fun parsePlanogramResponse(
         aiResponse: String,
         displayProducts: List<DisplayProductWithProduct>
     ) {
         try {
-            // JSON部分を抽出
+            // JSON部分を抽出（{ から } まで）
             val jsonStart = aiResponse.indexOf("{")
             val jsonEnd = aiResponse.lastIndexOf("}") + 1
             
