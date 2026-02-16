@@ -5,49 +5,64 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp"
     tools:context=".MainActivity">
 
-    <TextView
-        android:id="@+id/titleText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Supermarket Layout App"
-        android:textSize="24sp"
-        android:textStyle="bold"
+    <!-- ツールバー -->
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="0dp"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorPrimary"
+        android:elevation="4dp"
+        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+        app:title="Supermarket Layout App"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="32dp" />
+        app:layout_constraintEnd_toEndOf="parent" />
 
-    <Button
-        android:id="@+id/btnProductRegister"
+    <!-- コンテンツ -->
+    <LinearLayout
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="商品マスター登録"
-        app:layout_constraintTop_toBottomOf="@id/titleText"
+        android:layout_height="0dp"
+        android:orientation="vertical"
+        android:padding="16dp"
+        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="48dp" />
+        app:layout_constraintEnd_toEndOf="parent">
 
-    <Button
-        android:id="@+id/btnProductJsonManager"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="商品JSON管理"
-        app:layout_constraintTop_toBottomOf="@id/btnProductRegister"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp" />
+        <TextView
+            android:id="@+id/titleText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="メインメニュー"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="32dp"
+            android:layout_marginBottom="48dp" />
 
-    <Button
-        android:id="@+id/btnPlanogramManager"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="棚割り管理"
-        app:layout_constraintTop_toBottomOf="@id/btnProductJsonManager"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp" />
+        <Button
+            android:id="@+id/btnProductRegister"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="商品マスター登録"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/btnProductJsonManager"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="商品JSON管理"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/btnPlanogramManager"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="棚割り管理"
+            android:layout_marginBottom="16dp" />
+
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
