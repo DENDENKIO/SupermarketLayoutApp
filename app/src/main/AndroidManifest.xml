@@ -54,6 +54,11 @@
             android:name=".ui.PlanogramActivity"
             android:label="棚割り"
             android:theme="@style/Theme.SupermarketLayoutApp" />
+        
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:label="設定"
+            android:theme="@style/Theme.SupermarketLayoutApp" />
     </application>
 
 </manifest>
