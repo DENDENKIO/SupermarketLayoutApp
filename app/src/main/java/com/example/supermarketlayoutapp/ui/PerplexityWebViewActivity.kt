@@ -18,9 +18,6 @@ import android.util.Log
  * 
  * AIへのプロンプト自動注入、応答監視、JSONデータ抽出を実装。
  * **複数JANコードを一括処理**し、速度を大幅に向上。
- * メーカー公式サイトまたはAmazon.co.jpから商品情報を取得。
- * 
- * @see docs/AI_AUTO_INJECTION_SPEC.md 詳細仕様書
  */
 class PerplexityWebViewActivity : AppCompatActivity() {
 
@@ -417,7 +414,7 @@ class PerplexityWebViewActivity : AppCompatActivity() {
 
     /**
      * 複数JANコード用のプロンプトを構築
-     * メーカー公式サイトまたはAmazon.co.jpから情報取得するよう指示
+     * 制約を緩和し、あらゆる情報源から取得可能に
      */
     private fun buildPrompt(janList: List<String>): String {
         val janListStr = janList.joinToString(", ")
@@ -426,11 +423,13 @@ class PerplexityWebViewActivity : AppCompatActivity() {
 あなたはスーパーマーケット向け棚割システムのための商品マスターJSONを作成します。
 必ず以下の制約を守ってください。
 
-# 情報源の指定
-- **必ずメーカー公式サイトまたはAmazon.co.jpから商品情報を取得してください**
-- メーカー公式サイトが見つかる場合は、メーカーサイトを優先してください
-- Amazon.co.jpで商品ページが見つかる場合は、そこから正確なサイズ・価格情報を取得してください
-- 推測や不確かな情報は避け、信頼できるソースから取得した情報のみを使用してください
+# 情報取得方法
+- インターネット検索で各商品の正確な情報を取得してください
+- メーカー公式サイト、Amazon、楽天、ECサイト、商品データベースなど、信頼できる情報源を利用してください
+- 特に商品サイズ（幅・高さ・奥行）は正確な値を取得してください
+- サイズが不明な場合は、**類似商品のサイズを参考に推定**してください
+- 例: ペットボトル500mlは幅約6-7cm、高さ20-21cm、奥行6-7cm
+- 例: 缶コーヒー190gは幅約5.3cm、高さ11cm、奥行5.3cm
 
 # 出力形式
 - 回答は必ず次の形式だけを出力してください。
@@ -457,16 +456,16 @@ class PerplexityWebViewActivity : AppCompatActivity() {
 # ルール
 - 必ず**JSON配列**で出力し、入力JANコードごとに1つのオブジェクトを作成すること。
 - 数値項目は数値型で出力し、単位はすべてcmとする。
-- サイズが不明な場合は null を入れる。
+- サイズが不明な場合でも、**類似商品から推定して値を設定**してください。
+- 推定できない場合のみ null を入れる。
 - 価格が不明な場合は min_price, max_price に null を入れる。
 - 上のスキーマとキー名は絶対に変更しないこと。
 - JANコードが見つからない場合でも、そのJANのオブジェクトを配列に含め、nameを"不明"としてください。
-- **重要**: メーカー公式サイトまたはAmazon.co.jpのURLを参照し、そこから取得した情報であることを確認してください。
 
 # 入力情報
 JANコードリスト: $janListStr
 
-これらの入力情報を使い、メーカー公式サイトまたはAmazon.co.jpから商品情報を検索し、上記と同じ形式でJSON配列を出力してください。
+これらの入力情報を使い、インターネットから商品情報を検索し、上記と同じ形式でJSON配列を出力してください。
         """.trimIndent()
     }
 
