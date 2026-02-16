@@ -7,6 +7,7 @@ import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import com.example.supermarketlayoutapp.databinding.ActivitySettingsBinding
 
@@ -32,6 +33,7 @@ class SettingsActivity : AppCompatActivity() {
         setupToolbar()
         updateLoginStatus()
         setupButtons()
+        setupBackPressedHandler()
     }
 
     private fun setupToolbar() {
@@ -39,6 +41,25 @@ class SettingsActivity : AppCompatActivity() {
         binding.toolbar.setNavigationOnClickListener {
             finish()
         }
+    }
+
+    /**
+     * バックボタンハンドラーの設定
+     */
+    private fun setupBackPressedHandler() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // WebView表示中の場合は設定画面に戻る
+                if (binding.webView.visibility == android.view.View.VISIBLE) {
+                    binding.webView.visibility = android.view.View.GONE
+                    binding.settingsContent.visibility = android.view.View.VISIBLE
+                    binding.btnBackToSettings.visibility = android.view.View.GONE
+                    updateLoginStatus()
+                } else {
+                    finish()
+                }
+            }
+        })
     }
 
     /**
@@ -164,17 +185,5 @@ class SettingsActivity : AppCompatActivity() {
         cookieManager.flush()
         
         savePerplexityLoginStatus(false)
-    }
-
-    override fun onBackPressed() {
-        // WebView表示中の場合は設定画面に戻る
-        if (binding.webView.visibility == android.view.View.VISIBLE) {
-            binding.webView.visibility = android.view.View.GONE
-            binding.settingsContent.visibility = android.view.View.VISIBLE
-            binding.btnBackToSettings.visibility = android.view.View.GONE
-            updateLoginStatus()
-        } else {
-            super.onBackPressed()
-        }
     }
 }
